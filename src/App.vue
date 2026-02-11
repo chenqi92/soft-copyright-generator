@@ -389,6 +389,17 @@ export default {
         }
       }
 
+      // 防御性过滤：代码开头不可能是独立的闭合符号
+      // 跳过开头处的 } ] ) , 等不可能作为程序起始的行
+      while (finalLines.length > 0) {
+        const first = finalLines[0].trim()
+        if (/^[}\])\,;]+$/.test(first)) {
+          finalLines.shift()
+        } else {
+          break
+        }
+      }
+
       this.allCodeLines = finalLines
       this.stats = {
         totalFiles,

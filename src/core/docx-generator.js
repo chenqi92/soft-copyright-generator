@@ -147,9 +147,10 @@ export async function generateDocxBuffer(config) {
         }],
     })
 
-    const buffer = await Packer.toBuffer(doc)
+    const blob = await Packer.toBlob(doc)
+    const arrayBuffer = await blob.arrayBuffer()
     return {
-        buffer: new Uint8Array(buffer),
+        buffer: new Uint8Array(arrayBuffer),
         totalPages: truncResult.totalPages,
         isTruncated: truncResult.isTruncated,
         totalLines: truncResult.lines.length,
