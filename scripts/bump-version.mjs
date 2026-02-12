@@ -81,8 +81,9 @@ console.log(`\n🚀 提交并推送...\n`)
 try {
     execSync('git add -A', { stdio: 'inherit' })
     execSync(`git commit -m "release: v${newVersion}"`, { stdio: 'inherit' })
-    execSync('git push origin main', { stdio: 'inherit' })
-    console.log(`\n✅ 已推送 v${newVersion}，CI 将自动创建 tag 并构建发布\n`)
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim()
+    execSync(`git push origin ${branch}`, { stdio: 'inherit' })
+    console.log(`\n✅ 已推送 v${newVersion} 到 ${branch}，CI 将自动创建 tag 并构建发布\n`)
 } catch (e) {
     console.error('\n⚠️ Git 操作失败，请手动提交推送：')
     console.error(`  git add -A && git commit -m "release: v${newVersion}" && git push origin main\n`)

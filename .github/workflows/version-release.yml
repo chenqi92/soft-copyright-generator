@@ -2,7 +2,7 @@ name: Version Release
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
     paths:
       - 'package.json'
 
@@ -100,5 +100,6 @@ jobs:
           fi
 
           git tag -a "$TAG" -m "Release $TAG"
-          git push origin main --tags
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          git push origin "$BRANCH" --tags
           echo "✅ 已创建并推送 tag: $TAG"
