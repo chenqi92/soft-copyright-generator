@@ -7,7 +7,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.result }}
+      tag_name: ${{ github.ref_name }}
+
+    steps:
+      - name: Create GitHub Release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `软著代码生成器 ${tag}`,
+              body: `## 软著代码生成器 ${tag}\n\n### 下载说明\n- **Windows**: 下载 \`.msi\` 或 \`.exe\` 安装包\n- **macOS (Apple Silicon)**: 下载 \`aarch64.dmg\`\n- **macOS (Intel)**: 下载 \`x64.dmg\`\n\n> 首次发布，如遇问题请提 Issue`,
+              draft: true,
+              prerelease: false,
+            });
+            return data.id;
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -20,10 +47,14 @@ jobs:
             target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,12 +72,6 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - name: Install frontend dependencies
         run: npm ci
 
@@ -55,15 +80,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: '软著代码生成器 ${{ github.ref_name }}'
-          releaseBody: |
-            ## 软著代码生成器 ${{ github.ref_name }}
-
-            ### 下载说明
-            - **Windows**: 下载 `.msi` 或 `.exe` 安装包
-            - **macOS (Intel)**: 下载 `x64.dmg`
-            - **macOS (Apple Silicon)**: 下载 `aarch64.dmg`
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --target ${{ matrix.target }}
