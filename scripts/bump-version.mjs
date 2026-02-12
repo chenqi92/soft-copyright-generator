@@ -7,12 +7,12 @@
  *   node scripts/bump-version.mjs major    # 0.1.0 → 1.0.0
  *   node scripts/bump-version.mjs 1.2.3    # 直接指定版本号
  *
- * 更新以下文件的版本号：
- *   - package.json
- *   - src-tauri/tauri.conf.json
- *   - src-tauri/Cargo.toml
- *
- * 然后自动 git commit + push，触发 CI 构建发布。
+ * 流程：
+ *   1. 更新 package.json / tauri.conf.json / Cargo.toml 版本号
+ *   2. git commit
+ *   3. 创建 v{version} tag
+ *   4. git push --tags
+ *   5. 自动触发 release.yml 构建发布
  */
 import fs from 'fs'
 import { execSync } from 'child_process'
@@ -38,12 +38,15 @@ function bumpVersion(current, type) {
         case 'minor': return `${major}.${minor + 1}.0`
         case 'patch': return `${major}.${minor}.${patch + 1}`
         default:
-            // 直接指定版本号
             if (/^\d+\.\d+\.\d+$/.test(type)) return type
             console.error(`❌ 无效参数: ${type}`)
             console.error('用法: node scripts/bump-version.mjs [patch|minor|major|x.y.z]')
             process.exit(1)
     }
+}
+
+function run(cmd) {
+    execSync(cmd, { stdio: 'inherit' })
 }
 
 // ========== 主流程 ==========
@@ -56,6 +59,7 @@ if (!arg) {
 const pkg = readJSON(FILES.PACKAGE)
 const oldVersion = pkg.version
 const newVersion = bumpVersion(oldVersion, arg)
+const tag = `v${newVersion}`
 
 console.log(`\n📦 版本更新: ${oldVersion} → ${newVersion}\n`)
 
@@ -76,15 +80,22 @@ cargo = cargo.replace(/^version = ".*"/m, `version = "${newVersion}"`)
 fs.writeFileSync(FILES.CARGO, cargo)
 console.log(`  ✅ ${FILES.CARGO}`)
 
-// 4. Git commit + push
-console.log(`\n🚀 提交并推送...\n`)
+// 4. Git commit + tag + push
+const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim()
+console.log(`\n🚀 提交、打 tag 并推送到 ${branch}...\n`)
+
 try {
-    execSync('git add -A', { stdio: 'inherit' })
-    execSync(`git commit -m "release: v${newVersion}"`, { stdio: 'inherit' })
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim()
-    execSync(`git push origin ${branch}`, { stdio: 'inherit' })
-    console.log(`\n✅ 已推送 v${newVersion} 到 ${branch}，CI 将自动创建 tag 并构建发布\n`)
+    run('git add -A')
+    run(`git commit -m "release: ${tag}"`)
+    run(`git tag -a ${tag} -m "Release ${tag}"`)
+    run(`git push origin ${branch} --tags`)
+    console.log(`\n✅ 完成！已推送 ${tag} 到 ${branch}`)
+    console.log(`   → release.yml 将自动构建 Windows / macOS 安装包`)
+    console.log(`   → 查看进度: https://github.com/chenqi92/soft-copyright-generator/actions\n`)
 } catch (e) {
-    console.error('\n⚠️ Git 操作失败，请手动提交推送：')
-    console.error(`  git add -A && git commit -m "release: v${newVersion}" && git push origin main\n`)
+    console.error(`\n⚠️ Git 操作失败，请手动执行：`)
+    console.error(`  git add -A`)
+    console.error(`  git commit -m "release: ${tag}"`)
+    console.error(`  git tag -a ${tag} -m "Release ${tag}"`)
+    console.error(`  git push origin ${branch} --tags\n`)
 }
