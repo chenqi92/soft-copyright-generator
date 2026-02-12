@@ -12,7 +12,10 @@
     "tauri:build": "tauri build",
     "tauri:build:debug": "tauri build --debug",
     "tauri:icon": "tauri icon",
-    "generate-icons": "node scripts/generate-icons.mjs"
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "release:patch": "node scripts/bump-version.mjs patch",
+    "release:minor": "node scripts/bump-version.mjs minor",
+    "release:major": "node scripts/bump-version.mjs major"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
