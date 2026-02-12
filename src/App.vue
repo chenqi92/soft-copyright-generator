@@ -54,34 +54,33 @@
             <div class="form-row">
               <div class="form-group" style="flex:2;">
                 <label class="form-label">字体</label>
-                <select class="form-input" v-model="config.fontName">
-                  <optgroup label="中文字体">
-                    <option value="宋体">宋体</option>
-                    <option value="仿宋">仿宋</option>
-                    <option value="楷体">楷体</option>
-                    <option value="黑体">黑体</option>
-                    <option value="微软雅黑">微软雅黑</option>
-                    <option value="华文宋体">华文宋体</option>
-                    <option value="华文仿宋">华文仿宋</option>
-                    <option value="华文楷体">华文楷体</option>
-                    <option value="华文中宋">华文中宋</option>
-                  </optgroup>
-                  <optgroup label="英文等宽字体">
-                    <option value="Courier New">Courier New</option>
-                    <option value="Consolas">Consolas</option>
-                    <option value="Lucida Console">Lucida Console</option>
-                    <option value="Monaco">Monaco</option>
-                  </optgroup>
-                  <optgroup label="英文字体">
-                    <option value="Times New Roman">Times New Roman</option>
-                    <option value="Arial">Arial</option>
-                    <option value="Calibri">Calibri</option>
-                    <option value="Cambria">Cambria</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Verdana">Verdana</option>
-                    <option value="Tahoma">Tahoma</option>
-                  </optgroup>
-                </select>
+                <div class="font-select" :class="{ open: fontDropdownOpen }" v-click-outside="closeFontDropdown">
+                  <div class="font-select-trigger form-input" @click="fontDropdownOpen = !fontDropdownOpen"
+                    :style="{ fontFamily: config.fontName }">
+                    {{ config.fontName }}
+                    <ChevronDown :size="14" class="font-select-arrow" />
+                  </div>
+                  <div v-if="fontDropdownOpen" class="font-select-dropdown">
+                    <div class="font-select-group-label">中文字体</div>
+                    <div v-for="f in ['宋体','仿宋','楷体','黑体','微软雅黑','华文宋体','华文仿宋','华文楷体','华文中宋']" :key="f"
+                      :class="['font-select-option', { active: config.fontName === f }]"
+                      :style="{ fontFamily: f }" @click="config.fontName = f; fontDropdownOpen = false">
+                      {{ f }}
+                    </div>
+                    <div class="font-select-group-label">英文等宽字体</div>
+                    <div v-for="f in ['Courier New','Consolas','Lucida Console','Monaco']" :key="f"
+                      :class="['font-select-option', { active: config.fontName === f }]"
+                      :style="{ fontFamily: f }" @click="config.fontName = f; fontDropdownOpen = false">
+                      {{ f }}
+                    </div>
+                    <div class="font-select-group-label">英文字体</div>
+                    <div v-for="f in ['Times New Roman','Arial','Calibri','Cambria','Georgia','Verdana','Tahoma']" :key="f"
+                      :class="['font-select-option', { active: config.fontName === f }]"
+                      :style="{ fontFamily: f }" @click="config.fontName = f; fontDropdownOpen = false">
+                      {{ f }}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="form-group">
                 <label class="form-label">字号</label>
@@ -260,17 +259,17 @@
               <!-- Word 分页预览 -->
               <div v-if="previewData" class="word-preview-scroll">
                 <div v-for="(page, pi) in previewPages" :key="pi" class="word-page">
-                  <div class="word-page-header">
+                  <div class="word-page-header" :style="{ fontFamily: config.fontName }">
                     <span></span>
                     <span>{{ config.softwareName || '软件名称' }} V{{ config.version }}</span>
                   </div>
-                  <div class="word-page-body">
+                  <div class="word-page-body" :style="previewBodyStyle">
                     <div v-for="(line, li) in page" :key="li" class="code-line">
                       <span class="line-number">{{ pi * config.linesPerPage + li + 1 }}</span>
                       <span class="line-content">{{ line }}</span>
                     </div>
                   </div>
-                  <div class="word-page-footer">
+                  <div class="word-page-footer" :style="{ fontFamily: config.fontName }">
                     第 {{ pi + 1 }} 页 共 {{ previewPages.length }} 页
                   </div>
                 </div>
@@ -293,7 +292,7 @@ import { smartSortFiles } from './core/file-sorter.js'
 import {
   FolderOpen, Save, Pin, Plus, X, FileText, Search,
   Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
-  Sun, Moon
+  Sun, Moon, ChevronDown
 } from 'lucide-vue-next'
 
 const NON_CODE_EXTS = ['.json','.yaml','.yml','.toml','.ini','.cfg','.conf','.md','.txt','.csv','.log','.xml','.svg']
@@ -301,10 +300,23 @@ const BATCH_SIZE = 50
 
 export default {
   name: 'App',
+  directives: {
+    'click-outside': {
+      mounted(el, binding) {
+        el._clickOutside = (e) => {
+          if (!el.contains(e.target)) binding.value()
+        }
+        document.addEventListener('click', el._clickOutside)
+      },
+      unmounted(el) {
+        document.removeEventListener('click', el._clickOutside)
+      },
+    },
+  },
   components: {
     FolderOpen, Save, Pin, Plus, X, FileText, Search,
     Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
-    Sun, Moon
+    Sun, Moon, ChevronDown
   },
   data() {
     return {
@@ -319,12 +331,13 @@ export default {
         },
       },
       fileTypes: [], newIgnore: '',
+      fontDropdownOpen: false,
       detecting: false, previewing: false, generating: false, processing: false,
       progress: 0, progressText: '',
       stats: { totalFiles: 0, totalLines: 0, estimatedPages: 0 },
       previewData: null, previewLines: [],
       lastResult: null,
-      theme: 'dark',
+      theme: 'light',
       toast: { show: false, message: '', type: 'info' },
       allCodeLines: [],
     }
@@ -339,6 +352,15 @@ export default {
       }
       return pages
     },
+    previewBodyStyle() {
+      const fontSizePt = this.config.fontSize / 2
+      const fontSizePx = fontSizePt * (96 / 72) // pt → px (96dpi screen)
+      return {
+        fontFamily: `"${this.config.fontName}", monospace`,
+        fontSize: `${fontSizePx}px`,
+        lineHeight: '1.5',
+      }
+    },
     sortedFileTypes() {
       return [...this.fileTypes].sort((a, b) => {
         const aSelected = this.config.selectedExtensions.includes(a.ext) ? 0 : 1
@@ -352,6 +374,9 @@ export default {
     // ===== 主题切换 =====
     toggleTheme() {
       this.theme = this.theme === 'dark' ? 'light' : 'dark'
+    },
+    closeFontDropdown() {
+      this.fontDropdownOpen = false
     },
     // ===== 目录 =====
     async addDirectory() {
