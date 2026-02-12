@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container" style="height:100vh;display:flex;flex-direction:column;">
+  <div class="app-container" :class="{ 'light-theme': theme === 'light' }" style="height:100vh;display:flex;flex-direction:column;">
     <!-- Toast -->
     <div v-if="toast.show" :class="['message-toast', toast.type]">{{ toast.message }}</div>
 
@@ -7,6 +7,10 @@
     <header class="app-header">
       <h1><img src="./assets/logo.svg" class="app-logo" alt="logo" /> 软著代码生成器</h1>
       <div class="header-actions">
+        <button class="btn btn-secondary btn-sm" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'">
+          <Sun v-if="theme === 'dark'" :size="14" />
+          <Moon v-else :size="14" />
+        </button>
         <button class="btn btn-secondary btn-sm" @click="importConfig"><FolderOpen :size="14" /> 导入配置</button>
         <button class="btn btn-secondary btn-sm" @click="exportConfig"><Save :size="14" /> 导出配置</button>
       </div>
@@ -36,6 +40,74 @@
               <div class="form-group">
                 <label class="form-label">最大页数</label>
                 <input class="form-input" type="number" v-model.number="config.maxPages" min="1" max="120" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="flex:2;">
+                <label class="form-label">字体</label>
+                <select class="form-input" v-model="config.fontName">
+                  <optgroup label="中文字体">
+                    <option value="宋体">宋体</option>
+                    <option value="仿宋">仿宋</option>
+                    <option value="楷体">楷体</option>
+                    <option value="黑体">黑体</option>
+                    <option value="微软雅黑">微软雅黑</option>
+                    <option value="华文宋体">华文宋体</option>
+                    <option value="华文仿宋">华文仿宋</option>
+                    <option value="华文楷体">华文楷体</option>
+                    <option value="华文中宋">华文中宋</option>
+                  </optgroup>
+                  <optgroup label="英文等宽字体">
+                    <option value="Courier New">Courier New</option>
+                    <option value="Consolas">Consolas</option>
+                    <option value="Lucida Console">Lucida Console</option>
+                    <option value="Monaco">Monaco</option>
+                  </optgroup>
+                  <optgroup label="英文字体">
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Calibri">Calibri</option>
+                    <option value="Cambria">Cambria</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Tahoma">Tahoma</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">字号</label>
+                <select class="form-input" v-model.number="config.fontSize">
+                  <optgroup label="中文字号">
+                    <option :value="84">初号 (42pt)</option>
+                    <option :value="72">小初 (36pt)</option>
+                    <option :value="52">一号 (26pt)</option>
+                    <option :value="48">小一 (24pt)</option>
+                    <option :value="44">二号 (22pt)</option>
+                    <option :value="36">小二 (18pt)</option>
+                    <option :value="32">三号 (16pt)</option>
+                    <option :value="30">小三 (15pt)</option>
+                    <option :value="28">四号 (14pt)</option>
+                    <option :value="24">小四 (12pt)</option>
+                    <option :value="21">五号 (10.5pt)</option>
+                    <option :value="18">小五 (9pt)</option>
+                    <option :value="15">六号 (7.5pt)</option>
+                    <option :value="13">小六 (6.5pt)</option>
+                    <option :value="11">七号 (5.5pt)</option>
+                    <option :value="10">八号 (5pt)</option>
+                  </optgroup>
+                  <optgroup label="磅值">
+                    <option :value="144">72pt</option>
+                    <option :value="112">56pt</option>
+                    <option :value="108">54pt</option>
+                    <option :value="96">48pt</option>
+                    <option :value="56">28pt</option>
+                    <option :value="40">20pt</option>
+                    <option :value="22">11pt</option>
+                    <option :value="20">10pt</option>
+                    <option :value="16">8pt</option>
+                    <option :value="14">7pt</option>
+                  </optgroup>
+                </select>
               </div>
             </div>
           </div>
@@ -171,18 +243,27 @@
               </div>
               <div v-if="previewData" style="margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;">
                 <span class="badge badge-primary">总计 {{ fmt(previewData.totalLines) }} 行</span>
-                <span class="badge badge-success">预计 {{ previewData.totalPages }} 页</span>
+                <span class="badge badge-success">共 {{ previewPages.length }} 页</span>
                 <span v-if="previewData.totalPages > config.maxPages" class="badge badge-warning">
                   将截取前{{ Math.floor(config.maxPages/2) }}页 + 后{{ config.maxPages - Math.floor(config.maxPages/2) }}页
                 </span>
               </div>
-              <div v-if="previewData" class="code-preview" style="flex:1;">
-                <div v-for="(line,i) in previewLines" :key="i" class="code-line">
-                  <span class="line-number">{{ i+1 }}</span>
-                  <span class="line-content">{{ line }}</span>
-                </div>
-                <div v-if="previewData.totalLines > 300" style="color:var(--text-muted);padding:8px 0;text-align:center;">
-                  ... 预览仅显示前 300 行，共 {{ fmt(previewData.totalLines) }} 行 ...
+              <!-- Word 分页预览 -->
+              <div v-if="previewData" class="word-preview-scroll">
+                <div v-for="(page, pi) in previewPages" :key="pi" class="word-page">
+                  <div class="word-page-header">
+                    <span></span>
+                    <span>{{ config.softwareName || '软件名称' }} V{{ config.version }}</span>
+                  </div>
+                  <div class="word-page-body">
+                    <div v-for="(line, li) in page" :key="li" class="code-line">
+                      <span class="line-number">{{ pi * config.linesPerPage + li + 1 }}</span>
+                      <span class="line-content">{{ line }}</span>
+                    </div>
+                  </div>
+                  <div class="word-page-footer">
+                    第 {{ pi + 1 }} 页 共 {{ previewPages.length }} 页
+                  </div>
                 </div>
               </div>
             </div>
@@ -215,11 +296,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { writeFile, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { processFileContent } from './core/ratio-allocator.js'
-import { generateDocxBuffer, truncateCode } from './core/docx-generator.js'
+import { generateDocxBuffer, truncateCode, estimateLinesPerPage } from './core/docx-generator.js'
 import { smartSortFiles } from './core/file-sorter.js'
 import {
   FolderOpen, Save, Pin, Plus, X, FileText, Search,
-  Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown
+  Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
+  Sun, Moon
 } from 'lucide-vue-next'
 
 const NON_CODE_EXTS = ['.json','.yaml','.yml','.toml','.ini','.cfg','.conf','.md','.txt','.csv','.log','.xml','.svg']
@@ -229,12 +311,14 @@ export default {
   name: 'App',
   components: {
     FolderOpen, Save, Pin, Plus, X, FileText, Search,
-    Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown
+    Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
+    Sun, Moon
   },
   data() {
     return {
       config: {
-        softwareName: '', version: '1.0', linesPerPage: 50, maxPages: 80,
+        softwareName: '', version: '1.0', linesPerPage: 45, maxPages: 80,
+        fontName: '宋体', fontSize: 10,
         directories: [], selectedExtensions: [], customIgnorePatterns: [],
         useGitignore: true,
         cleanOptions: {
@@ -248,11 +332,36 @@ export default {
       stats: { totalFiles: 0, totalLines: 0, estimatedPages: 0 },
       previewData: null, previewLines: [],
       lastResult: null,
+      theme: 'dark',
       toast: { show: false, message: '', type: 'info' },
       allCodeLines: [],
     }
   },
+  created() {
+    // 初始化：根据字号计算每页行数
+    this.config.linesPerPage = estimateLinesPerPage(this.config.fontSize)
+  },
+  watch: {
+    'config.fontSize'(newVal) {
+      this.config.linesPerPage = estimateLinesPerPage(newVal)
+    },
+  },
+  computed: {
+    previewPages() {
+      if (!this.previewLines.length) return []
+      const pages = []
+      const lpp = this.config.linesPerPage || 50
+      for (let i = 0; i < this.previewLines.length; i += lpp) {
+        pages.push(this.previewLines.slice(i, i + lpp))
+      }
+      return pages
+    },
+  },
   methods: {
+    // ===== 主题切换 =====
+    toggleTheme() {
+      this.theme = this.theme === 'dark' ? 'light' : 'dark'
+    },
     // ===== 目录 =====
     async addDirectory() {
       const dir = await open({ directory: true, multiple: false, title: '选择代码目录' })
@@ -430,7 +539,7 @@ export default {
           totalLines: this.allCodeLines.length,
           totalPages: Math.ceil(this.allCodeLines.length / this.config.linesPerPage),
         }
-        this.previewLines = this.allCodeLines.slice(0, 300)
+        this.previewLines = this.allCodeLines
         this.showToast('预览已刷新', 'success')
       } catch (e) { this.showToast(String(e), 'error') }
       this.previewing = false
@@ -472,6 +581,8 @@ export default {
           codeLines: this.allCodeLines,
           linesPerPage: this.config.linesPerPage,
           maxPages: this.config.maxPages,
+          fontName: this.config.fontName,
+          fontSize: this.config.fontSize,
         })
 
         this.progress = 80

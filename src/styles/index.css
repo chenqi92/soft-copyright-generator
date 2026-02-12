@@ -30,6 +30,49 @@
     --radius-sm: 6px;
     --radius-md: 10px;
     --transition-fast: 0.15s ease;
+    --code-bg: #0d1117;
+    --code-color: #c9d1d9;
+    --code-line-number: #484f58;
+}
+
+/* 浅色模式 */
+.light-theme {
+    --bg-app: #f0f2f5;
+    --bg-surface: #ffffff;
+    --bg-elevated: #f8f9fb;
+    --bg-input: #f3f4f6;
+    --bg-hover: #e8eaef;
+    --border-color: rgba(99, 102, 241, 0.2);
+    --border-hover: rgba(99, 102, 241, 0.45);
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.08);
+    --primary-300: #6366f1;
+    --primary-400: #4f46e5;
+    --code-bg: #f6f8fa;
+    --code-color: #24292f;
+    --code-line-number: #8b949e;
+}
+
+/* 浅色模式 - 具体组件覆盖 */
+.light-theme .code-preview {
+    background: #f6f8fa !important;
+    color: #24292f !important;
+    border-color: #d0d7de !important;
+}
+
+.light-theme .code-preview .line-number {
+    color: #8b949e !important;
+}
+
+.light-theme .app-header {
+    background: #ffffff;
+    border-bottom-color: #e1e4e8;
+}
+
+.light-theme .stat-card {
+    background: #ffffff;
 }
 
 * {
@@ -117,9 +160,11 @@ body {
 .config-panel {
     width: 340px;
     min-width: 300px;
+    flex-shrink: 0;
     background: var(--bg-surface);
     border-right: 1px solid var(--border-color);
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px;
     display: flex;
     flex-direction: column;
@@ -128,7 +173,8 @@ body {
 
 .content-panel {
     flex: 1;
-    overflow-y: auto;
+    min-width: 0;
+    overflow: hidden;
     padding: 14px;
     display: flex;
     flex-direction: column;
@@ -480,16 +526,16 @@ body {
 }
 
 .code-preview {
-    background: var(--bg-input);
+    background: var(--code-bg);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 14px;
     max-height: 400px;
     overflow-y: auto;
-    font-family: 'Courier New', monospace;
+    font-family: 'Courier New', Consolas, monospace;
     font-size: 12px;
     line-height: 1.6;
-    color: var(--gray-300);
+    color: var(--code-color);
     white-space: pre-wrap;
     word-break: break-all;
 }
@@ -499,7 +545,7 @@ body {
 }
 
 .line-number {
-    color: var(--text-muted);
+    color: var(--code-line-number);
     min-width: 45px;
     text-align: right;
     padding-right: 12px;
@@ -791,3 +837,79 @@ body {
     margin-top: 4px;
     text-align: center;
 }
+
+/* ========== Word 分页预览 ========== */
+.word-preview-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    background: var(--bg-app);
+}
+
+.word-page {
+    width: 100%;
+    max-width: 800px;
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.word-page-header {
+    padding: 12px 32px 8px;
+    border-bottom: 1px solid #e1e4e8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #57606a;
+    font-family: '宋体', serif;
+}
+
+.word-page-body {
+    padding: 8px 32px;
+    flex: 1;
+    font-family: 'Courier New', Consolas, '宋体', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #24292f;
+}
+
+.word-page-body .code-line {
+    display: flex;
+}
+
+.word-page-body .line-number {
+    color: #8b949e;
+    min-width: 40px;
+    text-align: right;
+    padding-right: 12px;
+    user-select: none;
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+.word-page-body .line-content {
+    flex: 1;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.word-page-footer {
+    padding: 8px 32px 12px;
+    border-top: 1px solid #e1e4e8;
+    text-align: center;
+    font-size: 11px;
+    color: #57606a;
+    font-family: '宋体', serif;
+}
+
+/* 深色模式下 Word 页面仍保持白底（模拟真实文档） */
+/* 但滚动区域背景跟随主题 */

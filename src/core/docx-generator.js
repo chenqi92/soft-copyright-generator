@@ -1,28 +1,38 @@
 /**
  * Word 文档生成器 - 生成符合软著规范的 .docx 文件 (Browser-side)
+ *
+ * 使用显式 PageBreak 精确控制每页行数。
+ * 当自然页容量 > 设定行数时，PageBreak 强制提前换页。
+ * 当自然页容量 < 设定行数时，底部空白较多但行数精确。
  */
 import {
     Document, Packer, Paragraph, TextRun,
     Header, Footer, PageNumber,
-    AlignmentType,
+    AlignmentType, PageBreak,
     convertMillimetersToTwip
 } from 'docx'
 
-const SPEC = {
+const DEFAULTS = {
     PAGE_MARGIN_TOP: convertMillimetersToTwip(25.4),
     PAGE_MARGIN_BOTTOM: convertMillimetersToTwip(25.4),
     PAGE_MARGIN_LEFT: convertMillimetersToTwip(31.8),
     PAGE_MARGIN_RIGHT: convertMillimetersToTwip(31.8),
-    LINES_PER_PAGE: 50,
     MAX_PAGES: 80,
-    FRONT_PAGES: 40,
-    BACK_PAGES: 40,
-    FONT_NAME: 'Courier New',
-    FONT_NAME_CN: '宋体',
-    FONT_SIZE: 21, // 五号字体 = 10.5pt = 21 half-points
+    FONT_NAME: '宋体',
+    FONT_SIZE: 10, // 八号字体 = 5pt = 10 half-points
 }
 
-function createHeader(softwareName, version) {
+/**
+ * 根据字号（half-points）估算 A4 纸每页自然行数
+ */
+export function estimateLinesPerPage(fontSizeHalfPt) {
+    const fontSizePt = fontSizeHalfPt / 2
+    const availableHeightPt = 613
+    const lineHeightPt = fontSizePt * 1.3
+    return Math.floor(availableHeightPt / lineHeightPt)
+}
+
+function createHeader(softwareName, version, fontName) {
     return new Header({
         children: [
             new Paragraph({
@@ -30,7 +40,7 @@ function createHeader(softwareName, version) {
                 children: [
                     new TextRun({
                         text: `${softwareName} V${version}`,
-                        font: { name: SPEC.FONT_NAME_CN },
+                        font: { name: fontName, eastAsia: fontName },
                         size: 18,
                     }),
                 ],
@@ -39,60 +49,79 @@ function createHeader(softwareName, version) {
     })
 }
 
-function createFooter() {
+function createFooter(fontName) {
     return new Footer({
         children: [
             new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
-                    new TextRun({ text: '第 ', font: { name: SPEC.FONT_NAME_CN }, size: 18 }),
-                    new TextRun({ children: [PageNumber.CURRENT], font: { name: SPEC.FONT_NAME_CN }, size: 18 }),
-                    new TextRun({ text: ' 页 共 ', font: { name: SPEC.FONT_NAME_CN }, size: 18 }),
-                    new TextRun({ children: [PageNumber.TOTAL_PAGES], font: { name: SPEC.FONT_NAME_CN }, size: 18 }),
-                    new TextRun({ text: ' 页', font: { name: SPEC.FONT_NAME_CN }, size: 18 }),
+                    new TextRun({ text: '第 ', font: { name: fontName, eastAsia: fontName }, size: 18 }),
+                    new TextRun({ children: [PageNumber.CURRENT], font: { name: fontName, eastAsia: fontName }, size: 18 }),
+                    new TextRun({ text: ' 页 共 ', font: { name: fontName, eastAsia: fontName }, size: 18 }),
+                    new TextRun({ children: [PageNumber.TOTAL_PAGES], font: { name: fontName, eastAsia: fontName }, size: 18 }),
+                    new TextRun({ text: ' 页', font: { name: fontName, eastAsia: fontName }, size: 18 }),
                 ],
             }),
         ],
     })
 }
 
-function createCodeParagraph(line) {
+function createCodeParagraph(line, fontName, fontSize) {
     return new Paragraph({
         spacing: { line: 240, before: 0, after: 0 },
         children: [
             new TextRun({
                 text: line || ' ',
-                font: { name: SPEC.FONT_NAME, eastAsia: SPEC.FONT_NAME_CN },
-                size: SPEC.FONT_SIZE,
+                font: { name: fontName, eastAsia: fontName },
+                size: fontSize,
             }),
         ],
     })
 }
 
-function createSectionLabel(text) {
-    return new Paragraph({
-        spacing: { before: 200, after: 200 },
-        children: [
-            new TextRun({
-                text,
-                bold: true,
-                font: { name: SPEC.FONT_NAME_CN },
-                size: SPEC.FONT_SIZE,
-            }),
-        ],
-    })
-}
-
-export function truncateCode(allLines, linesPerPage = SPEC.LINES_PER_PAGE, maxPages = SPEC.MAX_PAGES) {
+/**
+ * 截取代码行
+ */
+export function truncateCode(allLines, linesPerPage, maxPages) {
     const totalPages = Math.ceil(allLines.length / linesPerPage)
     if (totalPages <= maxPages) {
-        return { lines: allLines, totalPages, isTruncated: false, frontLines: allLines, backLines: [] }
+        return { lines: allLines, totalPages, isTruncated: false }
     }
     const frontPages = Math.floor(maxPages / 2)
     const backPages = maxPages - frontPages
     const frontLines = allLines.slice(0, frontPages * linesPerPage)
     const backLines = allLines.slice(allLines.length - backPages * linesPerPage)
-    return { lines: [...frontLines, ...backLines], totalPages: maxPages, isTruncated: true, frontLines, backLines }
+    return { lines: [...frontLines, ...backLines], totalPages: maxPages, isTruncated: true }
+}
+
+/**
+ * 将代码行按每页 N 行分组，在每页最后一行附加 PageBreak
+ * 这样确保每页精确 N 行代码，不受 Word 自然排版影响
+ */
+function buildParagraphs(lines, linesPerPage, fontName, fontSize) {
+    const paragraphs = []
+    for (let i = 0; i < lines.length; i++) {
+        const isLastLineOfPage = (i + 1) % linesPerPage === 0
+        const isLastLine = i === lines.length - 1
+
+        if (isLastLineOfPage && !isLastLine) {
+            // 在这一行的段落中附加 PageBreak，强制换页
+            paragraphs.push(new Paragraph({
+                spacing: { line: 240, before: 0, after: 0 },
+                children: [
+                    new TextRun({
+                        text: lines[i] || ' ',
+                        font: { name: fontName, eastAsia: fontName },
+                        size: fontSize,
+                    }),
+                    new PageBreak(),
+                ],
+            }))
+        } else {
+            paragraphs.push(createCodeParagraph(lines[i], fontName, fontSize))
+        }
+    }
+    return paragraphs
 }
 
 /**
@@ -103,37 +132,24 @@ export async function generateDocxBuffer(config) {
         softwareName = '软件名称',
         version = '1.0',
         codeLines = [],
-        linesPerPage = SPEC.LINES_PER_PAGE,
-        maxPages = SPEC.MAX_PAGES,
+        linesPerPage = 50,
+        maxPages = DEFAULTS.MAX_PAGES,
+        fontName = DEFAULTS.FONT_NAME,
+        fontSize = DEFAULTS.FONT_SIZE,
     } = config
 
     const truncResult = truncateCode(codeLines, linesPerPage, maxPages)
-    const paragraphs = []
-
-    if (truncResult.isTruncated) {
-        // 前面的页 — 代码开头（程序起始部分）
-        for (const line of truncResult.frontLines) {
-            paragraphs.push(createCodeParagraph(line))
-        }
-        // 后面的页 — 代码结尾（程序结束部分）
-        for (const line of truncResult.backLines) {
-            paragraphs.push(createCodeParagraph(line))
-        }
-    } else {
-        for (const line of truncResult.lines) {
-            paragraphs.push(createCodeParagraph(line))
-        }
-    }
+    const paragraphs = buildParagraphs(truncResult.lines, linesPerPage, fontName, fontSize)
 
     const doc = new Document({
         sections: [{
             properties: {
                 page: {
                     margin: {
-                        top: SPEC.PAGE_MARGIN_TOP,
-                        bottom: SPEC.PAGE_MARGIN_BOTTOM,
-                        left: SPEC.PAGE_MARGIN_LEFT,
-                        right: SPEC.PAGE_MARGIN_RIGHT,
+                        top: DEFAULTS.PAGE_MARGIN_TOP,
+                        bottom: DEFAULTS.PAGE_MARGIN_BOTTOM,
+                        left: DEFAULTS.PAGE_MARGIN_LEFT,
+                        right: DEFAULTS.PAGE_MARGIN_RIGHT,
                     },
                     size: {
                         width: convertMillimetersToTwip(210),
@@ -141,8 +157,8 @@ export async function generateDocxBuffer(config) {
                     },
                 },
             },
-            headers: { default: createHeader(softwareName, version) },
-            footers: { default: createFooter() },
+            headers: { default: createHeader(softwareName, version, fontName) },
+            footers: { default: createFooter(fontName) },
             children: paragraphs,
         }],
     })
@@ -155,5 +171,6 @@ export async function generateDocxBuffer(config) {
         isTruncated: truncResult.isTruncated,
         totalLines: truncResult.lines.length,
         originalLines: codeLines.length,
+        linesPerPage,
     }
 }
