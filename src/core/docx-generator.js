@@ -18,8 +18,8 @@ const DEFAULTS = {
     PAGE_MARGIN_LEFT: convertMillimetersToTwip(31.8),
     PAGE_MARGIN_RIGHT: convertMillimetersToTwip(31.8),
     MAX_PAGES: 80,
-    FONT_NAME: '宋体',
-    FONT_SIZE: 10, // 八号字体 = 5pt = 10 half-points
+    FONT_NAME: '微软雅黑',
+    FONT_SIZE: 21, // 五号字体 = 10.5pt = 21 half-points
 }
 
 /**

@@ -7,6 +7,15 @@
     <header class="app-header">
       <h1><img src="./assets/logo.svg" class="app-logo" alt="logo" /> 软著代码生成器</h1>
       <div class="header-actions">
+        <span v-if="generating" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:12px;">
+          <span class="spinner"></span> 生成中...
+        </span>
+        <span v-else-if="lastResult" style="font-size:12px;color:var(--success-500);">
+          <Check :size="12" /> {{ lastResult.totalPages }}页 {{ fmt(lastResult.totalLines) }}行
+        </span>
+        <button class="btn btn-primary btn-sm" @click="generateDocument" :disabled="generating">
+          <FileDown :size="14" /> 生成 Word 文档
+        </button>
         <button class="btn btn-secondary btn-sm" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'">
           <Sun v-if="theme === 'dark'" :size="14" />
           <Moon v-else :size="14" />
@@ -158,7 +167,7 @@
               </div>
               <div class="file-type-grid-scroll">
                 <div class="file-type-grid">
-                  <div v-for="ft in fileTypes" :key="ft.ext"
+                  <div v-for="ft in sortedFileTypes" :key="ft.ext"
                     :class="['file-type-tag',{active:config.selectedExtensions.includes(ft.ext)}]"
                     @click="toggleFileType(ft.ext)">
                     {{ ft.ext }} <span class="count">{{ ft.count }}</span>
@@ -271,23 +280,6 @@
         </template>
       </main>
     </div>
-
-    <!-- 底部 -->
-    <footer class="app-footer">
-      <div class="footer-left">
-        <span v-if="generating" style="display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:13px;">
-          <span class="spinner"></span> 正在生成文档...
-        </span>
-        <span v-else-if="lastResult" style="font-size:13px;color:var(--success-500);">
-          <Check :size="14" /> 文档已生成：{{ lastResult.totalPages }} 页，{{ fmt(lastResult.totalLines) }} 行
-        </span>
-      </div>
-      <div class="footer-right">
-        <button class="btn btn-primary btn-lg" @click="generateDocument" :disabled="generating">
-          <FileDown :size="16" /> {{ generating ? '生成中...' : '生成 Word 文档' }}
-        </button>
-      </div>
-    </footer>
   </div>
 </template>
 
@@ -317,8 +309,8 @@ export default {
   data() {
     return {
       config: {
-        softwareName: '', version: '1.0', linesPerPage: 45, maxPages: 80,
-        fontName: '宋体', fontSize: 10,
+        softwareName: '', version: '1.0', linesPerPage: 50, maxPages: 80,
+        fontName: '微软雅黑', fontSize: 21,
         directories: [], selectedExtensions: [], customIgnorePatterns: [],
         useGitignore: true,
         cleanOptions: {
@@ -355,6 +347,14 @@ export default {
         pages.push(this.previewLines.slice(i, i + lpp))
       }
       return pages
+    },
+    sortedFileTypes() {
+      return [...this.fileTypes].sort((a, b) => {
+        const aSelected = this.config.selectedExtensions.includes(a.ext) ? 0 : 1
+        const bSelected = this.config.selectedExtensions.includes(b.ext) ? 0 : 1
+        if (aSelected !== bSelected) return aSelected - bSelected
+        return b.count - a.count
+      })
     },
   },
   methods: {

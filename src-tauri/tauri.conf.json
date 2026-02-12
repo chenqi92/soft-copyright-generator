@@ -5,7 +5,7 @@
   "identifier": "com.ranzhu.soft-copyright-generator",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:51420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

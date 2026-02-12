@@ -174,7 +174,7 @@ body {
 .content-panel {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
+    overflow-y: auto;
     padding: 14px;
     display: flex;
     flex-direction: column;
@@ -185,7 +185,6 @@ body {
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    overflow: hidden;
     transition: border-color 0.25s ease;
 }
 
