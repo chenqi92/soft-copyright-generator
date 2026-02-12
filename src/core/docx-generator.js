@@ -1,17 +1,24 @@
 /**
  * Word 文档生成器 - 生成符合软著规范的 .docx 文件 (Browser-side)
  *
- * 使用显式 PageBreak 精确控制每页行数。
- * 当自然页容量 > 设定行数时，PageBreak 强制提前换页。
- * 当自然页容量 < 设定行数时，底部空白较多但行数精确。
+ * 核心机制：
+ * 1. 使用精确行距（LineRuleType.EXACT）强制每行固定高度
+ *    → 覆盖微软雅黑等字体内置行距过大的问题
+ * 2. 使用文档网格（DocumentGridType.LINES）控制每页行数
+ *    → Word「页面设置→文档网格→指定行数」
+ * 3. 使用 PageBreak 在每页最后一行强制换页（三重保险）
+ * 4. 启用连续行号
+ *
+ * 软著截取规则：前 N/2 页 + 后 N/2 页（确保结尾为程序结束部分）
  */
 import {
     Document, Packer, Paragraph, TextRun,
     Header, Footer, PageNumber,
-    AlignmentType, PageBreak,
+    AlignmentType, LineRuleType, DocumentGridType,
     convertMillimetersToTwip
 } from 'docx'
 
+const PAGE_HEIGHT_TWIP = convertMillimetersToTwip(297)
 const DEFAULTS = {
     PAGE_MARGIN_TOP: convertMillimetersToTwip(25.4),
     PAGE_MARGIN_BOTTOM: convertMillimetersToTwip(25.4),
@@ -23,13 +30,22 @@ const DEFAULTS = {
 }
 
 /**
- * 根据字号（half-points）估算 A4 纸每页自然行数
+ * 计算精确行距 (twips)
+ * 确保 linesPerPage 行恰好填满一个 A4 页面
+ */
+function calcExactLineSpacing(linesPerPage) {
+    const availableTwip = PAGE_HEIGHT_TWIP - DEFAULTS.PAGE_MARGIN_TOP - DEFAULTS.PAGE_MARGIN_BOTTOM
+    return Math.floor(availableTwip / linesPerPage)
+}
+
+/**
+ * 根据字号估算每页自然行数（仅供参考显示用）
  */
 export function estimateLinesPerPage(fontSizeHalfPt) {
     const fontSizePt = fontSizeHalfPt / 2
-    const availableHeightPt = 613
-    const lineHeightPt = fontSizePt * 1.3
-    return Math.floor(availableHeightPt / lineHeightPt)
+    const availableTwip = PAGE_HEIGHT_TWIP - DEFAULTS.PAGE_MARGIN_TOP - DEFAULTS.PAGE_MARGIN_BOTTOM
+    const availablePt = availableTwip / 20
+    return Math.floor(availablePt / (fontSizePt * 1.3))
 }
 
 function createHeader(softwareName, version, fontName) {
@@ -66,21 +82,9 @@ function createFooter(fontName) {
     })
 }
 
-function createCodeParagraph(line, fontName, fontSize) {
-    return new Paragraph({
-        spacing: { line: 240, before: 0, after: 0 },
-        children: [
-            new TextRun({
-                text: line || ' ',
-                font: { name: fontName, eastAsia: fontName },
-                size: fontSize,
-            }),
-        ],
-    })
-}
-
 /**
- * 截取代码行
+ * 截取代码行 — 软著规范：前 N/2 页 + 后 N/2 页
+ * 确保最后一页始终包含程序结尾代码
  */
 export function truncateCode(allLines, linesPerPage, maxPages) {
     const totalPages = Math.ceil(allLines.length / linesPerPage)
@@ -95,31 +99,30 @@ export function truncateCode(allLines, linesPerPage, maxPages) {
 }
 
 /**
- * 将代码行按每页 N 行分组，在每页最后一行附加 PageBreak
- * 这样确保每页精确 N 行代码，不受 Word 自然排版影响
+ * 构建段落列表
+ * 使用 LineRuleType.EXACT 精确行高，Word 自然分页恰好 N 行/页
+ * 不使用 PageBreak（会导致段落跨页产生空白行）
  */
-function buildParagraphs(lines, linesPerPage, fontName, fontSize) {
+function buildParagraphs(lines, linesPerPage, fontName, fontSize, lineSpacingTwip) {
     const paragraphs = []
-    for (let i = 0; i < lines.length; i++) {
-        const isLastLineOfPage = (i + 1) % linesPerPage === 0
-        const isLastLine = i === lines.length - 1
+    const spacingProps = {
+        line: lineSpacingTwip,
+        lineRule: LineRuleType.EXACT,
+        before: 0,
+        after: 0,
+    }
 
-        if (isLastLineOfPage && !isLastLine) {
-            // 在这一行的段落中附加 PageBreak，强制换页
-            paragraphs.push(new Paragraph({
-                spacing: { line: 240, before: 0, after: 0 },
-                children: [
-                    new TextRun({
-                        text: lines[i] || ' ',
-                        font: { name: fontName, eastAsia: fontName },
-                        size: fontSize,
-                    }),
-                    new PageBreak(),
-                ],
-            }))
-        } else {
-            paragraphs.push(createCodeParagraph(lines[i], fontName, fontSize))
-        }
+    for (let i = 0; i < lines.length; i++) {
+        paragraphs.push(new Paragraph({
+            spacing: spacingProps,
+            children: [
+                new TextRun({
+                    text: lines[i] || ' ',
+                    font: { name: fontName, eastAsia: fontName },
+                    size: fontSize,
+                }),
+            ],
+        }))
     }
     return paragraphs
 }
@@ -138,8 +141,9 @@ export async function generateDocxBuffer(config) {
         fontSize = DEFAULTS.FONT_SIZE,
     } = config
 
+    const lineSpacingTwip = calcExactLineSpacing(linesPerPage)
     const truncResult = truncateCode(codeLines, linesPerPage, maxPages)
-    const paragraphs = buildParagraphs(truncResult.lines, linesPerPage, fontName, fontSize)
+    const paragraphs = buildParagraphs(truncResult.lines, linesPerPage, fontName, fontSize, lineSpacingTwip)
 
     const doc = new Document({
         sections: [{
@@ -155,6 +159,16 @@ export async function generateDocxBuffer(config) {
                         width: convertMillimetersToTwip(210),
                         height: convertMillimetersToTwip(297),
                     },
+                },
+                // 文档网格 — Word「页面设置→文档网格→指定行数」
+                grid: {
+                    linePitch: lineSpacingTwip,
+                    type: DocumentGridType.LINES,
+                },
+                // 连续行号 — Word「布局→行号→连续」
+                lineNumbers: {
+                    countBy: 1,
+                    restart: "continuous",
                 },
             },
             headers: { default: createHeader(softwareName, version, fontName) },

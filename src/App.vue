@@ -329,15 +329,6 @@ export default {
       allCodeLines: [],
     }
   },
-  created() {
-    // 初始化：根据字号计算每页行数
-    this.config.linesPerPage = estimateLinesPerPage(this.config.fontSize)
-  },
-  watch: {
-    'config.fontSize'(newVal) {
-      this.config.linesPerPage = estimateLinesPerPage(newVal)
-    },
-  },
   computed: {
     previewPages() {
       if (!this.previewLines.length) return []
