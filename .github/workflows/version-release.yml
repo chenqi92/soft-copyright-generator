@@ -1,0 +1,104 @@
+name: Version Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version_changed: ${{ steps.check.outputs.changed }}
+      new_version: ${{ steps.check.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: check
+        run: |
+          # 获取当前和上一次提交的版本号
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          git show HEAD~1:package.json > /tmp/old-package.json 2>/dev/null || echo '{"version":"0.0.0"}' > /tmp/old-package.json
+          PREVIOUS_VERSION=$(node -p "require('/tmp/old-package.json').version")
+
+          echo "当前版本: $CURRENT_VERSION"
+          echo "上次版本: $PREVIOUS_VERSION"
+
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "✅ 版本号已变更: $PREVIOUS_VERSION → $CURRENT_VERSION"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "⏭️ 版本号未变更，跳过发布"
+          fi
+
+  sync-and-tag:
+    needs: check-version
+    if: needs.check-version.outputs.version_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync version to tauri.conf.json and Cargo.toml
+        run: |
+          VERSION=${{ needs.check-version.outputs.new_version }}
+          echo "同步版本号 $VERSION 到所有配置文件..."
+
+          # 同步 tauri.conf.json
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            conf.version = '$VERSION';
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+          "
+
+          # 同步 Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+          echo "✅ 版本号同步完成"
+          echo "--- tauri.conf.json ---"
+          grep '"version"' src-tauri/tauri.conf.json
+          echo "--- Cargo.toml ---"
+          grep '^version' src-tauri/Cargo.toml
+
+      - name: Commit version sync
+        run: |
+          VERSION=${{ needs.check-version.outputs.new_version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 检查是否有变更需要提交
+          if git diff --quiet; then
+            echo "版本号已同步，无需额外提交"
+          else
+            git add -A
+            git commit -m "chore: sync version to v${VERSION}"
+          fi
+
+      - name: Create tag and push
+        run: |
+          VERSION=${{ needs.check-version.outputs.new_version }}
+          TAG="v${VERSION}"
+
+          # 检查 tag 是否已存在
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ Tag $TAG 已存在，跳过"
+            exit 0
+          fi
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin main --tags
+          echo "✅ 已创建并推送 tag: $TAG"
