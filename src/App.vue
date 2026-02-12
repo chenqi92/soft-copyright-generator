@@ -252,8 +252,8 @@
               <div v-if="previewData" style="margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;">
                 <span class="badge badge-primary">总计 {{ fmt(previewData.totalLines) }} 行</span>
                 <span class="badge badge-success">共 {{ previewPages.length }} 页</span>
-                <span v-if="previewData.totalPages > config.maxPages" class="badge badge-warning">
-                  将截取前{{ Math.floor(config.maxPages/2) }}页 + 后{{ config.maxPages - Math.floor(config.maxPages/2) }}页
+                <span v-if="previewData.isTruncated" class="badge badge-warning">
+                  已按比例截取{{ previewPages.length }}页
                 </span>
               </div>
               <!-- Word 分页预览 -->
@@ -286,8 +286,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { writeFile, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { processFileContent } from './core/ratio-allocator.js'
-import { generateDocxBuffer, truncateCode, estimateLinesPerPage } from './core/docx-generator.js'
+import { processFileContent, allocateCodeByRatio } from './core/ratio-allocator.js'
+import { generateDocxBuffer, estimateLinesPerPage } from './core/docx-generator.js'
 import { smartSortFiles } from './core/file-sorter.js'
 import {
   FolderOpen, Save, Pin, Plus, X, FileText, Search,
@@ -339,7 +339,7 @@ export default {
       lastResult: null,
       theme: 'light',
       toast: { show: false, message: '', type: 'info' },
-      allCodeLines: [],
+      dirResults: [],
     }
   },
   computed: {
@@ -394,7 +394,7 @@ export default {
       this.rebalance()
       if (!this.config.directories.length) {
         this.fileTypes = []; this.config.selectedExtensions = []
-        this.previewData = null; this.allCodeLines = []
+        this.previewData = null; this.dirResults = []
         this.stats = { totalFiles: 0, totalLines: 0, estimatedPages: 0 }
       }
     },
@@ -459,8 +459,8 @@ export default {
         dirFiles.push({ path: dir.path, ratio: dir.ratio, files: sorted })
       }
 
-      const totalFiles = dirFiles.reduce((s, d) => s + d.files.length, 0)
-      if (totalFiles === 0) {
+      const totalFileCount = dirFiles.reduce((s, d) => s + d.files.length, 0)
+      if (totalFileCount === 0) {
         this.processing = false
         this.showToast('未找到匹配的代码文件', 'warning')
         return null
@@ -470,10 +470,12 @@ export default {
       const dirResults = []
 
       for (const dir of dirFiles) {
-        const allLines = []
+        const fileEntries = [] // 逐文件存储，保留文件边界
+        let dirTotalLines = 0
+
         for (let i = 0; i < dir.files.length; i += BATCH_SIZE) {
           const batch = dir.files.slice(i, i + BATCH_SIZE)
-          this.progressText = `正在处理: ${dir.path.split(/[/\\]/).pop()} (${processedCount}/${totalFiles})`
+          this.progressText = `正在处理: ${dir.path.split(/[/\\]/).pop()} (${processedCount}/${totalFileCount})`
 
           const readResult = await invoke('read_files_content', {
             files: batch.map(f => ({ path: f.path, relative_path: f.relative_path, name: f.name, ext: f.ext }))
@@ -482,36 +484,36 @@ export default {
           for (const fc of readResult.files) {
             if (fc.error || !fc.content) continue
             const result = processFileContent(fc.content, fc.ext, this.config.cleanOptions)
-            allLines.push(...result.lines)
+            if (result.lines.length > 0) {
+              fileEntries.push({
+                name: fc.name || fc.relative_path,
+                lines: result.lines,
+                lineCount: result.lines.length,
+              })
+              dirTotalLines += result.lines.length
+            }
             processedCount++
           }
-          this.progress = Math.round((processedCount / totalFiles) * 100)
+          this.progress = Math.round((processedCount / totalFileCount) * 100)
         }
-        dirResults.push({ path: dir.path, ratio: dir.ratio, totalLines: allLines.length, allLines })
+
+        dirResults.push({
+          path: dir.path,
+          ratio: dir.ratio,
+          files: fileEntries,
+          totalLines: dirTotalLines,
+        })
       }
 
-      // 收集全部代码行（不做截取，由 docx-generator 的 truncateCode 统一处理前+后截取）
-      const finalLines = []
-      for (const dir of dirResults) {
-        finalLines.push(...dir.allLines)
-      }
+      // 保存各目录的逐文件数据
+      this.dirResults = dirResults
 
-      // 防御性过滤：代码开头不可能是独立的闭合符号
-      while (finalLines.length > 0) {
-        const first = finalLines[0].trim()
-        if (/^[}\])\,;]+$/.test(first)) {
-          finalLines.shift()
-        } else {
-          break
-        }
-      }
-
-      this.allCodeLines = finalLines
+      const totalLines = dirResults.reduce((s, d) => s + d.totalLines, 0)
       this.stats = {
-        totalFiles,
-        totalLines: finalLines.length,
+        totalFiles: totalFileCount,
+        totalLines,
         estimatedPages: Math.min(
-          Math.ceil(finalLines.length / this.config.linesPerPage),
+          Math.ceil(totalLines / this.config.linesPerPage),
           this.config.maxPages
         ),
       }
@@ -520,12 +522,7 @@ export default {
       this.progress = 100
       this.progressText = '处理完成'
 
-      return {
-        totalLines: finalLines.length,
-        totalPages: Math.ceil(finalLines.length / this.config.linesPerPage),
-        totalFiles,
-        dirResults,
-      }
+      return { totalLines, totalFiles: totalFileCount, dirResults }
     },
 
     // ===== 预览 =====
@@ -535,14 +532,15 @@ export default {
         const result = await this.processAllFiles()
         if (!result) { this.previewing = false; return }
 
-        // 使用与导出相同的截取逻辑，确保预览与导出一致
-        const truncResult = truncateCode(this.allCodeLines, this.config.linesPerPage, this.config.maxPages)
+        // 按目录比例分配页数并摘取代码
+        const allocResult = allocateCodeByRatio(this.dirResults, this.config.linesPerPage, this.config.maxPages)
         this.previewData = {
-          totalLines: truncResult.lines.length,
-          totalPages: truncResult.totalPages,
-          isTruncated: truncResult.isTruncated,
+          totalLines: allocResult.lines.length,
+          totalPages: allocResult.totalPages,
+          isTruncated: allocResult.isTruncated,
+          dirAllocations: allocResult.dirAllocations,
         }
-        this.previewLines = truncResult.lines
+        this.previewLines = allocResult.lines
         this.showToast('预览已刷新', 'success')
       } catch (e) { this.showToast(String(e), 'error') }
       this.previewing = false
@@ -570,7 +568,7 @@ export default {
 
       this.generating = true
       try {
-        if (this.allCodeLines.length === 0) {
+        if (this.dirResults.length === 0) {
           const result = await this.processAllFiles()
           if (!result) { this.generating = false; return }
         }
@@ -578,12 +576,14 @@ export default {
         this.progressText = '正在生成 Word 文档...'
         this.processing = true; this.progress = 50
 
+        // 按目录比例分配页数并摘取代码
+        const allocResult = allocateCodeByRatio(this.dirResults, this.config.linesPerPage, this.config.maxPages)
+
         const genResult = await generateDocxBuffer({
           softwareName: this.config.softwareName,
           version: this.config.version,
-          codeLines: this.allCodeLines,
+          codeLines: allocResult.lines,
           linesPerPage: this.config.linesPerPage,
-          maxPages: this.config.maxPages,
           fontName: this.config.fontName,
           fontSize: this.config.fontSize,
         })
@@ -596,7 +596,6 @@ export default {
         this.lastResult = {
           totalPages: genResult.totalPages,
           totalLines: genResult.totalLines,
-          isTruncated: genResult.isTruncated,
         }
 
         this.progress = 100

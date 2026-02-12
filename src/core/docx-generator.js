@@ -6,10 +6,9 @@
  *    → 覆盖微软雅黑等字体内置行距过大的问题
  * 2. 使用文档网格（DocumentGridType.LINES）控制每页行数
  *    → Word「页面设置→文档网格→指定行数」
- * 3. 使用 PageBreak 在每页最后一行强制换页（三重保险）
- * 4. 启用连续行号
+ * 3. 启用连续行号
  *
- * 软著截取规则：前 N/2 页 + 后 N/2 页（确保结尾为程序结束部分）
+ * 代码摘取由 ratio-allocator.js 的 allocateCodeByRatio 处理
  */
 import {
     Document, Packer, Paragraph, TextRun,
@@ -82,21 +81,6 @@ function createFooter(fontName) {
     })
 }
 
-/**
- * 截取代码行 — 软著规范：前 N/2 页 + 后 N/2 页
- * 确保最后一页始终包含程序结尾代码
- */
-export function truncateCode(allLines, linesPerPage, maxPages) {
-    const totalPages = Math.ceil(allLines.length / linesPerPage)
-    if (totalPages <= maxPages) {
-        return { lines: allLines, totalPages, isTruncated: false }
-    }
-    const frontPages = Math.floor(maxPages / 2)
-    const backPages = maxPages - frontPages
-    const frontLines = allLines.slice(0, frontPages * linesPerPage)
-    const backLines = allLines.slice(allLines.length - backPages * linesPerPage)
-    return { lines: [...frontLines, ...backLines], totalPages: maxPages, isTruncated: true }
-}
 
 /**
  * 构建段落列表
@@ -136,14 +120,13 @@ export async function generateDocxBuffer(config) {
         version = '1.0',
         codeLines = [],
         linesPerPage = 50,
-        maxPages = DEFAULTS.MAX_PAGES,
         fontName = DEFAULTS.FONT_NAME,
         fontSize = DEFAULTS.FONT_SIZE,
     } = config
 
     const lineSpacingTwip = calcExactLineSpacing(linesPerPage)
-    const truncResult = truncateCode(codeLines, linesPerPage, maxPages)
-    const paragraphs = buildParagraphs(truncResult.lines, linesPerPage, fontName, fontSize, lineSpacingTwip)
+    const paragraphs = buildParagraphs(codeLines, linesPerPage, fontName, fontSize, lineSpacingTwip)
+    const totalPages = Math.ceil(codeLines.length / linesPerPage)
 
     const doc = new Document({
         sections: [{
@@ -176,10 +159,8 @@ export async function generateDocxBuffer(config) {
     const arrayBuffer = await blob.arrayBuffer()
     return {
         buffer: new Uint8Array(arrayBuffer),
-        totalPages: truncResult.totalPages,
-        isTruncated: truncResult.isTruncated,
-        totalLines: truncResult.lines.length,
-        originalLines: codeLines.length,
+        totalPages,
+        totalLines: codeLines.length,
         linesPerPage,
     }
 }
