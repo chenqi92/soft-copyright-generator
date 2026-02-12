@@ -151,7 +151,7 @@
         <div class="card">
           <div class="card-header">
             <h3><FileText :size="14" /> 文件类型</h3>
-            <button class="btn btn-secondary btn-sm" @click="detectTypes" :disabled="config.directories.length===0 || detecting">
+            <button :class="['btn','btn-sm', config.directories.length > 0 ? 'btn-primary' : 'btn-secondary']" @click="detectTypes" :disabled="config.directories.length===0 || detecting">
               {{ detecting ? '检测中...' : '' }}<Search :size="14" v-if="!detecting" /> {{ detecting ? '' : '检测类型' }}
             </button>
           </div>
@@ -237,7 +237,7 @@
           <div class="card" style="flex:1;display:flex;flex-direction:column;">
             <div class="card-header">
               <h3><Eye :size="14" /> 代码预览</h3>
-              <button class="btn btn-secondary btn-sm" @click="refreshPreview" :disabled="previewing || config.selectedExtensions.length===0">
+              <button :class="['btn','btn-sm', config.selectedExtensions.length > 0 ? 'btn-primary' : 'btn-secondary']" @click="refreshPreview" :disabled="previewing || config.selectedExtensions.length===0">
                 <RefreshCw :size="14" v-if="!previewing" /> {{ previewing ? '加载中...' : '刷新预览' }}
               </button>
             </div>
@@ -465,32 +465,13 @@ export default {
         dirResults.push({ path: dir.path, ratio: dir.ratio, totalLines: allLines.length, allLines })
       }
 
-      // 按比例分配
-      const totalLinesNeeded = this.config.maxPages * this.config.linesPerPage
-      const totalRatio = dirResults.reduce((s, d) => s + d.ratio, 0)
-      let remaining = totalLinesNeeded
+      // 收集全部代码行（不做截取，由 docx-generator 的 truncateCode 统一处理前+后截取）
       const finalLines = []
-
       for (const dir of dirResults) {
-        const idealLines = Math.round(totalLinesNeeded * (dir.ratio / totalRatio))
-        const allocated = Math.min(idealLines, dir.totalLines, remaining)
-        finalLines.push(...dir.allLines.slice(0, allocated))
-        remaining -= allocated
-      }
-      if (remaining > 0) {
-        for (const dir of dirResults) {
-          const used = Math.min(Math.round(totalLinesNeeded * (dir.ratio / totalRatio)), dir.totalLines)
-          if (dir.totalLines > used) {
-            const extra = Math.min(remaining, dir.totalLines - used)
-            finalLines.push(...dir.allLines.slice(used, used + extra))
-            remaining -= extra
-            if (remaining <= 0) break
-          }
-        }
+        finalLines.push(...dir.allLines)
       }
 
       // 防御性过滤：代码开头不可能是独立的闭合符号
-      // 跳过开头处的 } ] ) , 等不可能作为程序起始的行
       while (finalLines.length > 0) {
         const first = finalLines[0].trim()
         if (/^[}\])\,;]+$/.test(first)) {
@@ -504,7 +485,10 @@ export default {
       this.stats = {
         totalFiles,
         totalLines: finalLines.length,
-        estimatedPages: Math.ceil(finalLines.length / this.config.linesPerPage),
+        estimatedPages: Math.min(
+          Math.ceil(finalLines.length / this.config.linesPerPage),
+          this.config.maxPages
+        ),
       }
 
       this.processing = false
@@ -526,11 +510,14 @@ export default {
         const result = await this.processAllFiles()
         if (!result) { this.previewing = false; return }
 
+        // 使用与导出相同的截取逻辑，确保预览与导出一致
+        const truncResult = truncateCode(this.allCodeLines, this.config.linesPerPage, this.config.maxPages)
         this.previewData = {
-          totalLines: this.allCodeLines.length,
-          totalPages: Math.ceil(this.allCodeLines.length / this.config.linesPerPage),
+          totalLines: truncResult.lines.length,
+          totalPages: truncResult.totalPages,
+          isTruncated: truncResult.isTruncated,
         }
-        this.previewLines = this.allCodeLines
+        this.previewLines = truncResult.lines
         this.showToast('预览已刷新', 'success')
       } catch (e) { this.showToast(String(e), 'error') }
       this.previewing = false

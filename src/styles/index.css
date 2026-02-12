@@ -90,16 +90,20 @@
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg-app);
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    background: var(--bg-app);
 }
 
 #app {
     height: 100vh;
     display: flex;
     flex-direction: column;
+}
+
+.app-container {
+    background: var(--bg-app);
 }
 
 ::-webkit-scrollbar {

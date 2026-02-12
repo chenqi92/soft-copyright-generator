@@ -50,6 +50,20 @@ jobs:
               const existing = releases.find(r => r.tag_name === tag);
               if (existing) {
                 console.log(`Found existing release: ${existing.id} (${tag})`);
+                // 删除旧资源，避免重新构建时同名文件冲突
+                const { data: assets } = await github.rest.repos.listReleaseAssets({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: existing.id,
+                });
+                for (const asset of assets) {
+                  console.log(`Deleting old asset: ${asset.name}`);
+                  await github.rest.repos.deleteReleaseAsset({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    asset_id: asset.id,
+                  });
+                }
                 return existing.id;
               }
             } catch (e) {

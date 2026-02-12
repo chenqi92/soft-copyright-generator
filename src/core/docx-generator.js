@@ -14,7 +14,7 @@
 import {
     Document, Packer, Paragraph, TextRun,
     Header, Footer, PageNumber,
-    AlignmentType, LineRuleType, DocumentGridType,
+    AlignmentType, LineRuleType,
     convertMillimetersToTwip
 } from 'docx'
 
@@ -159,11 +159,6 @@ export async function generateDocxBuffer(config) {
                         width: convertMillimetersToTwip(210),
                         height: convertMillimetersToTwip(297),
                     },
-                },
-                // 文档网格 — Word「页面设置→文档网格→指定行数」
-                grid: {
-                    linePitch: lineSpacingTwip,
-                    type: DocumentGridType.LINES,
                 },
                 // 连续行号 — Word「布局→行号→连续」
                 lineNumbers: {
