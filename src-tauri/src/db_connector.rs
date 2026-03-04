@@ -11,32 +11,48 @@ pub struct DbConfig {
     pub database: Option<String>,
 }
 
+fn url_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
+            _ => {
+                for byte in c.to_string().as_bytes() {
+                    result.push_str(&format!("%{:02X}", byte));
+                }
+            }
+        }
+    }
+    result
+}
+
 impl DbConfig {
     fn db_name(&self) -> &str {
         self.database.as_deref().unwrap_or("")
     }
 
     fn mysql_url(&self) -> String {
+        let user = url_encode(&self.username);
+        let pass = url_encode(&self.password);
         let db = self.db_name();
         if db.is_empty() {
-            format!(
-                "mysql://{}:{}@{}:{}",
-                self.username, self.password, self.host, self.port
-            )
+            format!("mysql://{}:{}@{}:{}", user, pass, self.host, self.port)
         } else {
             format!(
                 "mysql://{}:{}@{}:{}/{}",
-                self.username, self.password, self.host, self.port, db
+                user, pass, self.host, self.port, db
             )
         }
     }
 
     fn postgres_url(&self) -> String {
+        let user = url_encode(&self.username);
+        let pass = url_encode(&self.password);
         let db = self.db_name();
         let target = if db.is_empty() { "postgres" } else { db };
         format!(
             "postgres://{}:{}@{}:{}/{}",
-            self.username, self.password, self.host, self.port, target
+            user, pass, self.host, self.port, target
         )
     }
 }

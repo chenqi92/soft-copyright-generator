@@ -44,16 +44,9 @@
             <!-- 数据库类型 -->
             <div class="form-group">
               <label class="form-label">数据库类型</label>
-              <div class="db-type-btns">
-                <button
-                  v-for="t in dbTypes"
-                  :key="t.value"
-                  :class="['db-type-btn', { active: config.db_type === t.value }]"
-                  @click="config.db_type = t.value; config.port = t.defaultPort"
-                >
-                  {{ t.label }}
-                </button>
-              </div>
+              <select class="form-input" v-model="config.db_type" @change="onDbTypeChange">
+                <option v-for="t in dbTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+              </select>
             </div>
 
             <!-- 主机 & 端口 -->
@@ -206,8 +199,17 @@
           <!-- ER 图视图 -->
           <div v-if="viewMode === 'er'" class="er-diagram-wrap">
             <div class="er-diagram-header">
-              <span style="font-size:13px;font-weight:600;color:var(--text-primary);">ER 实体关系图</span>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:13px;font-weight:600;color:var(--text-primary);">ER 实体关系图</span>
+                <label class="checkbox-label" style="font-size:11px;margin:0;">
+                  <input type="checkbox" v-model="erShowComments" /> 显示备注
+                </label>
+              </div>
               <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;" @click="openExportDialog('er')">
+                  <Download :size="12" /> 导出图片
+                </button>
+                <span style="width:1px;height:16px;background:var(--border-color);"></span>
                 <span style="font-size:11px;color:var(--text-muted);">{{ Math.round(diagramScale * 100) }}%</span>
                 <button class="btn-icon" @click="zoomIn" title="放大"><span style="font-size:16px;">+</span></button>
                 <button class="btn-icon" @click="zoomOut" title="缩小"><span style="font-size:16px;">–</span></button>
@@ -241,9 +243,13 @@
                 <span style="font-size:11px;color:var(--text-muted);">{{ currentEntityTableIndex + 1 }} / {{ filteredTables.length }}</span>
               </div>
               <div style="display:flex;align-items:center;gap:6px;">
+                <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;" @click="openExportDialog('relation')">
+                  <Download :size="12" /> 批量导出
+                </button>
+                <span style="width:1px;height:16px;background:var(--border-color);"></span>
                 <button class="btn-icon" @click="prevEntityTable" :disabled="currentEntityTableIndex <= 0" title="上一张">❮</button>
                 <button class="btn-icon" @click="nextEntityTable" :disabled="currentEntityTableIndex >= filteredTables.length - 1" title="下一张">❯</button>
-                <span style="width:1px;height:16px;background:var(--border-color);margin:0 4px;"></span>
+                <span style="width:1px;height:16px;background:var(--border-color);margin:0 2px;"></span>
                 <span style="font-size:11px;color:var(--text-muted);">{{ Math.round(diagramScale * 100) }}%</span>
                 <button class="btn-icon" @click="zoomIn" title="放大"><span style="font-size:16px;">+</span></button>
                 <button class="btn-icon" @click="zoomOut" title="缩小"><span style="font-size:16px;">–</span></button>
@@ -366,6 +372,39 @@
         </template>
       </main>
     </div>
+
+    <!-- 导出选择弹框 -->
+    <div v-if="exportDialog.show" class="modal-overlay" @click.self="exportDialog.show = false">
+      <div class="modal-content" style="width:420px;">
+        <div class="modal-header">
+          <h3>{{ exportDialog.mode === 'er' ? '导出 ER 图' : '批量导出关系图' }}</h3>
+          <button class="btn-icon" @click="exportDialog.show = false"><X :size="14" /></button>
+        </div>
+        <div class="modal-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:12px;color:var(--text-muted);">{{ exportDialog.selected.length }} / {{ filteredTables.length }} 张表已选</span>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:1px 6px;" @click="exportDialogSelectAll">全选</button>
+              <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:1px 6px;" @click="exportDialogSelectNone">全不选</button>
+            </div>
+          </div>
+          <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:4px;">
+            <label v-for="table in filteredTables" :key="table.name" class="checkbox-label" style="padding:4px 8px;margin:0;font-size:12px;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" :value="table.name" v-model="exportDialog.selected" />
+              <code style="font-size:11px;">{{ table.name }}</code>
+              <span v-if="table.comment" style="color:var(--text-muted);font-size:10px;">{{ table.comment }}</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-sm" @click="exportDialog.show = false">取消</button>
+          <button class="btn btn-primary btn-sm" @click="doExportImages" :disabled="exportDialog.selected.length === 0 || exportDialog.exporting">
+            <span v-if="exportDialog.exporting" class="spinner" style="width:12px;height:12px;"></span>
+            {{ exportDialog.exporting ? '导出中...' : '开始导出' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -400,8 +439,8 @@ export default {
         database: '',
       },
       dbTypes: [
-        { value: 'mysql', label: 'MySQL', defaultPort: 3306 },
-        { value: 'postgres', label: 'PostgreSQL', defaultPort: 5432 },
+        { value: 'mysql', label: 'MySQL', defaultPort: 3306, defaultUser: 'root' },
+        { value: 'postgres', label: 'PostgreSQL', defaultPort: 5432, defaultUser: 'postgres' },
       ],
       availableDatabases: [],
       loading: false,
@@ -420,6 +459,13 @@ export default {
       dragStartY: 0,
       _renderCounter: 0,
       currentEntityTableIndex: 0,
+      erShowComments: true,
+      exportDialog: {
+        show: false,
+        mode: '', // 'er' | 'relation'
+        selected: [],
+        exporting: false,
+      },
       exportOptions: {
         includeToc: true,
         includeEr: true,
@@ -468,7 +514,7 @@ export default {
     erMermaidCode() {
       if (!this.schema) return ''
       if (this.filteredForeignKeys.length === 0 && this.filteredTables.length === 0) return ''
-      return generateErMermaid(this.filteredTables, this.filteredColumns, this.filteredForeignKeys)
+      return generateErMermaid(this.filteredTables, this.filteredColumns, this.filteredForeignKeys, { showComments: this.erShowComments })
     },
     filteredSchema() {
       return {
@@ -505,8 +551,26 @@ export default {
       this.diagramY = 0
       this.$nextTick(() => this.renderEntityDiagram())
     },
+    erShowComments() {
+      if (this.viewMode === 'er') {
+        this.$nextTick(() => this.renderErDiagram())
+      }
+    },
   },
   methods: {
+    // ===== 数据库类型切换 =====
+    onDbTypeChange() {
+      const t = this.dbTypes.find(d => d.value === this.config.db_type)
+      if (t) {
+        this.config.port = t.defaultPort
+        this.config.username = t.defaultUser
+      }
+      this.connStatus = ''
+      this.dbVersion = ''
+      this.availableDatabases = []
+      this.config.database = ''
+    },
+
     // ===== 连接测试 =====
     async testConnection() {
       this.loading = true
@@ -790,6 +854,154 @@ export default {
       } catch (e) {
         this.showToast('Word 导出失败: ' + String(e), 'error')
       }
+    },
+
+    // ===== 图片导出 =====
+    openExportDialog(mode) {
+      this.exportDialog.mode = mode
+      this.exportDialog.selected = this.filteredTables.map(t => t.name)
+      this.exportDialog.exporting = false
+      this.exportDialog.show = true
+    },
+    exportDialogSelectAll() {
+      this.exportDialog.selected = this.filteredTables.map(t => t.name)
+    },
+    exportDialogSelectNone() {
+      this.exportDialog.selected = []
+    },
+
+    async svgToPng(svgString, scale = 2) {
+      return new Promise((resolve, reject) => {
+        const parser = new DOMParser()
+        const svgDoc = parser.parseFromString(svgString, 'image/svg+xml')
+        const svgEl = svgDoc.documentElement
+
+        let w = parseFloat(svgEl.getAttribute('width') || svgEl.viewBox?.baseVal?.width || 800)
+        let h = parseFloat(svgEl.getAttribute('height') || svgEl.viewBox?.baseVal?.height || 600)
+
+        // 确保有 viewBox
+        if (!svgEl.getAttribute('viewBox')) {
+          svgEl.setAttribute('viewBox', `0 0 ${w} ${h}`)
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = w * scale
+        canvas.height = h * scale
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#1e1e2e'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+        const blob = new Blob([new XMLSerializer().serializeToString(svgEl)], { type: 'image/svg+xml;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const img = new Image()
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          URL.revokeObjectURL(url)
+          canvas.toBlob(b => {
+            if (b) {
+              b.arrayBuffer().then(ab => resolve(new Uint8Array(ab)))
+            } else {
+              reject(new Error('Canvas toBlob failed'))
+            }
+          }, 'image/png')
+        }
+        img.onerror = () => {
+          URL.revokeObjectURL(url)
+          reject(new Error('SVG image load failed'))
+        }
+        img.src = url
+      })
+    },
+
+    async doExportImages() {
+      const { mode, selected } = this.exportDialog
+      if (selected.length === 0) return
+      this.exportDialog.exporting = true
+
+      try {
+        if (mode === 'er') {
+          await this.exportErImage(selected)
+        } else {
+          await this.exportEntityImages(selected)
+        }
+      } catch (e) {
+        this.showToast('导出失败: ' + String(e), 'error')
+        console.error('Export error:', e)
+      }
+
+      this.exportDialog.exporting = false
+      this.exportDialog.show = false
+    },
+
+    async exportErImage(selectedNames) {
+      const tables = this.filteredTables.filter(t => selectedNames.includes(t.name))
+      const columns = this.filteredColumns.filter(c => selectedNames.includes(c.table_name))
+      const fks = this.filteredForeignKeys.filter(f => selectedNames.includes(f.table_name))
+      const code = generateErMermaid(tables, columns, fks, { showComments: this.erShowComments })
+
+      if (!code || code.split('\n').length <= 1) {
+        this.showToast('选中的表没有外键关系，无法生成 ER 图', 'error')
+        return
+      }
+
+      const mermaid = (await import('mermaid')).default
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        er: { useMaxWidth: false, layoutDirection: 'TB' },
+        securityLevel: 'loose',
+      })
+      this._renderCounter++
+      const { svg } = await mermaid.render(`export-er-${this._renderCounter}`, code)
+
+      const pngData = await this.svgToPng(svg)
+
+      const path = await save({
+        title: '导出 ER 图',
+        defaultPath: 'ER关系图.png',
+        filters: [{ name: 'PNG 图片', extensions: ['png'] }],
+      })
+      if (!path) return
+      await writeFile(path, pngData)
+      this.showToast('ER 图已导出', 'success')
+    },
+
+    async exportEntityImages(selectedNames) {
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      const imgFolder = zip.folder('实体关系图')
+
+      let count = 0
+      for (const name of selectedNames) {
+        const table = this.filteredTables.find(t => t.name === name)
+        if (!table) continue
+
+        const svgStr = generateTableEntitySvg(table, this.filteredColumns, this.filteredForeignKeys)
+        try {
+          const pngData = await this.svgToPng(svgStr)
+          imgFolder.file(`${name}.png`, pngData)
+          count++
+        } catch (e) {
+          console.warn(`导出 ${name} 失败:`, e)
+        }
+      }
+
+      if (count === 0) {
+        this.showToast('没有成功生成任何图片', 'error')
+        return
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const zipData = new Uint8Array(await zipBlob.arrayBuffer())
+
+      const path = await save({
+        title: '导出关系图压缩包',
+        defaultPath: '实体关系图.zip',
+        filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }],
+      })
+      if (!path) return
+      await writeFile(path, zipData)
+      this.showToast(`已导出 ${count} 张实体关系图`, 'success')
     },
   },
 }

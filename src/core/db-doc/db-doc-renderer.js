@@ -52,7 +52,8 @@ export function processTableComment(table) {
 /**
  * 生成 Mermaid erDiagram 代码
  */
-export function generateErMermaid(tables, columns, foreignKeys) {
+export function generateErMermaid(tables, columns, foreignKeys, options = {}) {
+    const { showComments = true } = options
     const lines = ['erDiagram']
 
     // 实体定义
@@ -70,7 +71,7 @@ export function generateErMermaid(tables, columns, foreignKeys) {
             const marks = [pkMark, fkMark].filter(Boolean).join(',')
             const marksStr = marks ? ` ${marks}` : ''
             const sanitizedType = col.full_type.replace(/[^a-zA-Z0-9_]/g, '')
-            const comment = col.comment ? ` "${col.comment.substring(0, 20)}"` : ''
+            const comment = (showComments && col.comment) ? ` "${col.comment.substring(0, 20)}"` : ''
             lines.push(`        ${sanitizedType} ${sanitizeMermaidId(col.name)}${marksStr}${comment}`)
         }
         if (tableCols.length > maxCols) {
