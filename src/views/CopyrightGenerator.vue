@@ -15,11 +15,9 @@
         <span v-else-if="lastResult" style="font-size:12px;color:var(--success-500);">
           <Check :size="12" /> {{ lastResult.totalPages }}页 {{ fmt(lastResult.totalLines) }}行
         </span>
-        <button class="btn btn-primary btn-sm" @click="generateDocument" :disabled="generating">
+        <button class="btn btn-primary btn-sm" @click="generateDocument" :disabled="generating || !lastResult">
           <FileDown :size="14" /> 生成 Word 文档
         </button>
-        <button class="btn btn-secondary btn-sm" @click="importConfig"><FolderOpen :size="14" /> 导入配置</button>
-        <button class="btn btn-secondary btn-sm" @click="exportConfig"><Save :size="14" /> 导出配置</button>
       </div>
     </div>
 

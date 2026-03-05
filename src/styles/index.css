@@ -70,10 +70,7 @@
     color: #8b949e !important;
 }
 
-.light-theme .app-header {
-    background: #ffffff;
-    border-bottom-color: #e1e4e8;
-}
+/* 浅色模式覆盖已移至左导航部分 */
 
 .light-theme .stat-card {
     background: #ffffff;
@@ -128,119 +125,99 @@ body {
     background: var(--gray-500);
 }
 
-.app-header {
-    background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
-    border-bottom: 1px solid var(--border-color);
-    padding: 10px 20px;
+/* ========== 左侧导航栏 ========== */
+.app-left-nav {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: space-between;
-    gap: 16px;
-}
-
-.app-brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    width: 62px;
+    background: linear-gradient(180deg, var(--bg-surface), var(--bg-elevated));
+    border-right: 1px solid var(--border-color);
+    padding: 10px 0;
     flex-shrink: 0;
+    user-select: none;
 }
 
-.app-title {
-    font-size: 15px;
-    font-weight: 600;
-    background: linear-gradient(135deg, var(--primary-300), var(--primary-500));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+.left-nav-top,
+.left-nav-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.left-nav-logo {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    margin-bottom: 12px;
+}
+
+.left-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 4px;
+    width: 54px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    font-family: inherit;
+    position: relative;
+}
+
+.left-nav-item:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.left-nav-item.active {
+    color: var(--primary-400);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.left-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--primary-500);
+}
+
+.left-nav-label {
+    font-size: 10px;
+    line-height: 1;
     white-space: nowrap;
 }
 
-.app-logo {
-    width: 28px;
-    height: 28px;
-    object-fit: contain;
+.light-theme .app-left-nav {
+    background: #ffffff;
+    border-right-color: #e1e4e8;
+}
+
+/* ========== 子视图操作栏 ========== */
+.view-header {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 .header-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-shrink: 0;
-}
-
-/* ========== Tab 导航 ========== */
-.tab-nav {
-    display: flex;
-    align-items: center;
-    position: relative;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 3px;
-    gap: 2px;
-}
-
-.tab-indicator {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    height: calc(100% - 6px);
-    background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
-    border-radius: 8px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
-    z-index: 0;
-}
-
-.tab-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 16px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    font-family: inherit;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: color 0.2s ease;
-    white-space: nowrap;
-    position: relative;
-    z-index: 1;
-    user-select: none;
-}
-
-.tab-item:hover:not(.active) {
-    color: var(--text-primary);
-}
-
-.tab-item.active {
-    color: #ffffff;
-}
-
-.tab-item svg {
-    vertical-align: -1px;
-}
-
-/* 浅色模式 Tab 适配 */
-.light-theme .tab-nav {
-    background: #e8eaef;
-    border-color: #d0d7de;
-}
-
-.light-theme .tab-indicator {
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
-}
-
-/* ========== 子视图操作栏 ========== */
-.view-header {
-    padding: 8px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
 }
 
 .app-body {

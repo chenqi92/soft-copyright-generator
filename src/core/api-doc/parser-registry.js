@@ -9,26 +9,51 @@
 const PROJECT_SIGNATURES = [
     {
         id: 'spring-boot',
-        label: 'Spring Boot',
+        label: 'Spring Boot (Java)',
         icon: '☕',
-        // 特征文件（存在任一即匹配）
         markers: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
-        // 二次验证关键词（在特征文件中搜索）
         keywords: ['spring-boot', 'org.springframework'],
-        // 源码目录约定
         sourceRoots: ['src/main/java'],
         sourceExt: '.java',
+        ignorePatterns: ['**/src/test/**', '**/target/**', '**/build/**'],
     },
-    // 后续扩展：
-    // { id: 'express', label: 'Express.js', markers: ['package.json'], keywords: ['express'], ... },
-    // { id: 'flask', label: 'Flask', markers: ['requirements.txt'], keywords: ['flask'], ... },
+    {
+        id: 'go',
+        label: 'Go',
+        icon: '🐹',
+        markers: ['go.mod'],
+        keywords: ['module'],
+        sourceRoots: ['.'],
+        sourceExt: '.go',
+        ignorePatterns: ['**/vendor/**'],
+    },
+    {
+        id: 'python',
+        label: 'Python',
+        icon: '🐍',
+        markers: ['requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile'],
+        keywords: ['fastapi', 'flask', 'django', 'starlette', 'sanic'],
+        sourceRoots: ['.'],
+        sourceExt: '.py',
+        ignorePatterns: ['**/__pycache__/**', '**/venv/**', '**/.venv/**', '**/migrations/**'],
+    },
+    {
+        id: 'rust',
+        label: 'Rust',
+        icon: '🦀',
+        markers: ['Cargo.toml'],
+        keywords: ['actix', 'axum', 'rocket', 'warp', 'tide'],
+        sourceRoots: ['src'],
+        sourceExt: '.rs',
+        ignorePatterns: ['**/target/**'],
+    },
 ]
 
 /**
  * 检测项目语言
  * @param {string[]} fileList - 项目根目录下的文件名列表
  * @param {Object} fileContents - { filename: content } 特征文件内容（可选）
- * @returns {{ id: string, label: string, icon: string, sourceRoots: string[], sourceExt: string } | null}
+ * @returns {{ id: string, label: string, icon: string, sourceRoots: string[], sourceExt: string, ignorePatterns?: string[] } | null}
  */
 export function detectProjectLanguage(fileList, fileContents = {}) {
     for (const sig of PROJECT_SIGNATURES) {
@@ -40,15 +65,15 @@ export function detectProjectLanguage(fileList, fileContents = {}) {
             const markerFile = sig.markers.find(m => fileContents[m])
             if (markerFile) {
                 const content = fileContents[markerFile]
-                const hasKeyword = sig.keywords.some(kw => content.includes(kw))
+                const hasKeyword = sig.keywords.some(kw => content.toLowerCase().includes(kw.toLowerCase()))
                 if (hasKeyword) {
-                    return { id: sig.id, label: sig.label, icon: sig.icon, sourceRoots: sig.sourceRoots, sourceExt: sig.sourceExt }
+                    return { id: sig.id, label: sig.label, icon: sig.icon, sourceRoots: sig.sourceRoots, sourceExt: sig.sourceExt, ignorePatterns: sig.ignorePatterns }
                 }
             }
         }
 
         // 没有内容可验证时，仅凭特征文件匹配
-        return { id: sig.id, label: sig.label, icon: sig.icon, sourceRoots: sig.sourceRoots, sourceExt: sig.sourceExt }
+        return { id: sig.id, label: sig.label, icon: sig.icon, sourceRoots: sig.sourceRoots, sourceExt: sig.sourceExt, ignorePatterns: sig.ignorePatterns }
     }
     return null
 }
@@ -58,4 +83,34 @@ export function detectProjectLanguage(fileList, fileContents = {}) {
  */
 export function getSupportedLanguages() {
     return PROJECT_SIGNATURES.map(s => ({ id: s.id, label: s.label, icon: s.icon }))
+}
+
+/**
+ * 统一解析入口 — 根据语言 ID 动态调度对应解析器
+ * @param {string} langId - 语言 ID (spring-boot/go/python/rust)
+ * @param {Array<{name: string, relative_path: string, content: string}>} files - 源文件列表
+ * @param {function} [onProgress] - 进度回调 (message: string, percent: number) => void
+ * @returns {Promise<{ modules: Array }>}
+ */
+export async function parseProject(langId, files, onProgress) {
+    switch (langId) {
+        case 'spring-boot': {
+            const { parseSpringBootProject } = await import('./spring-boot-parser.js')
+            return parseSpringBootProject(files, onProgress)
+        }
+        case 'go': {
+            const { parseGoProject } = await import('./go-parser.js')
+            return parseGoProject(files, onProgress)
+        }
+        case 'python': {
+            const { parsePythonProject } = await import('./python-parser.js')
+            return parsePythonProject(files, onProgress)
+        }
+        case 'rust': {
+            const { parseRustProject } = await import('./rust-parser.js')
+            return parseRustProject(files, onProgress)
+        }
+        default:
+            throw new Error(`不支持的项目类型: ${langId}`)
+    }
 }

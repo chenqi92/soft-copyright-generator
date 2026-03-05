@@ -309,7 +309,7 @@ export async function parseSpringBootProject(javaFiles, onProgress) {
                 modules.push(module)
             }
         } catch (e) {
-            log(`⚠️ 解析 ${controller.name} 失败: ${e.message}`, pct)
+            log(`[警告] 解析 ${controller.name} 失败: ${e.message}`, pct)
             console.error(`[api-doc] 解析 Controller 失败: ${controller.name}`, e)
         }
 

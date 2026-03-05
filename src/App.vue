@@ -1,43 +1,50 @@
 <template>
-  <div class="app-container" :class="{ 'light-theme': theme === 'light' }" style="height:100vh;display:flex;flex-direction:column;">
+  <div class="app-container" :class="{ 'light-theme': theme === 'light' }" style="height:100vh;display:flex;">
     <!-- Toast -->
     <div v-if="toast.show" :class="['message-toast', toast.type]">{{ toast.message }}</div>
 
-    <!-- 头部 -->
-    <header class="app-header">
-      <div class="app-brand">
-        <img src="./assets/logo.svg" class="app-logo" alt="logo" />
-        <span class="app-title">交付助手</span>
-      </div>
-
-      <TabNav
-        :tabs="tabs"
-        v-model="activeTab"
-      />
-
-      <div class="header-actions">
+    <!-- 左侧导航栏 -->
+    <nav class="app-left-nav">
+      <div class="left-nav-top">
+        <img src="./assets/logo.svg" class="left-nav-logo" alt="logo" />
         <button
-          :class="['btn', 'btn-secondary', 'btn-sm', 'guide-toggle-btn', { 'guide-active': guideEnabled }]"
-          @click="toggleGuide"
-          :title="guideEnabled ? '关闭引导提示' : '开启引导提示'"
+          v-for="tab in tabs" :key="tab.id"
+          :class="['left-nav-item', { active: activeTab === tab.id }]"
+          @click="activeTab = tab.id"
+          :title="tab.label"
         >
-          <HelpCircle :size="14" />
-        </button>
-        <button class="btn btn-secondary btn-sm" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'">
-          <Sun v-if="theme === 'dark'" :size="14" />
-          <Moon v-else :size="14" />
+          <component :is="tab.icon" :size="18" />
+          <span class="left-nav-label">{{ tab.label }}</span>
         </button>
       </div>
-    </header>
+      <div class="left-nav-bottom">
+        <button
+          :class="['left-nav-item', { active: guideEnabled }]"
+          @click="toggleGuide"
+          :title="guideEnabled ? '关闭引导' : '开启引导'"
+        >
+          <HelpCircle :size="18" />
+          <span class="left-nav-label">引导</span>
+        </button>
+        <button class="left-nav-item" @click="toggleTheme" :title="theme === 'dark' ? '浅色' : '深色'">
+          <Sun v-if="theme === 'dark'" :size="18" />
+          <Moon v-else :size="18" />
+          <span class="left-nav-label">{{ theme === 'dark' ? '浅色' : '深色' }}</span>
+        </button>
+      </div>
+    </nav>
 
-    <!-- 主体 + 侧栏 -->
-    <div style="flex:1;display:flex;overflow:hidden;">
-      <div style="flex:1;overflow:auto;">
-        <keep-alive>
-          <component :is="currentView" :key="activeTab" style="height:100%;" />
-        </keep-alive>
+    <!-- 右侧主区域 -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      <!-- 主体 + 右侧栏 -->
+      <div style="flex:1;display:flex;overflow:hidden;">
+        <div style="flex:1;overflow:auto;">
+          <keep-alive>
+            <component :is="currentView" :key="activeTab" style="height:100%;" />
+          </keep-alive>
+        </div>
+        <AiSidebar />
       </div>
-      <AiSidebar />
     </div>
   </div>
 </template>
@@ -45,7 +52,6 @@
 <script>
 import { Sun, Moon, FileCode, Plug, Database, Bot, HelpCircle } from 'lucide-vue-next'
 import { markRaw } from 'vue'
-import TabNav from './components/TabNav.vue'
 import AiSidebar from './components/AiSidebar.vue'
 import CopyrightGenerator from './views/CopyrightGenerator.vue'
 import ApiDocGenerator from './views/ApiDocGenerator.vue'
@@ -54,7 +60,7 @@ import AiSettings from './views/AiSettings.vue'
 
 export default {
   name: 'App',
-  components: { TabNav, AiSidebar, Sun, Moon, HelpCircle, CopyrightGenerator, ApiDocGenerator, DbDocGenerator, AiSettings },
+  components: { AiSidebar, Sun, Moon, HelpCircle, CopyrightGenerator, ApiDocGenerator, DbDocGenerator, AiSettings },
   provide() {
     return {
       showToast: this.showToast,

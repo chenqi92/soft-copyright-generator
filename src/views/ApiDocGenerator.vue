@@ -87,20 +87,7 @@
             >
               <Scan :size="14" /> {{ parsing ? '解析中...' : '开始解析' }}
             </button>
-            <!-- 进度条 -->
-            <div v-if="parsing" class="parse-progress" style="margin-top:8px;">
-              <div class="progress-bar-wrap">
-                <div class="progress-bar-fill" :style="{width: parsePercent + '%'}"></div>
-              </div>
-              <span style="font-size:11px;color:var(--text-muted);">{{ parsePercent }}%</span>
-            </div>
-            <!-- 解析日志 -->
-            <div v-if="parseLogs.length > 0" class="parse-log-panel" ref="logPanel">
-              <div v-for="(log, i) in parseLogs" :key="i" class="parse-log-item">
-                <span class="parse-log-time">{{ log.time }}</span>
-                <span>{{ log.msg }}</span>
-              </div>
-            </div>
+
             <div v-if="parseResult" style="margin-top:8px;">
               <div class="tip">
                 <Lightbulb :size="14" class="tip-icon" />
@@ -187,7 +174,7 @@
         <div v-if="!parseResult" class="empty-state" style="flex:1;">
           <Plug :size="48" style="opacity:0.3;margin-bottom:16px;" />
           <p>接口文档生成器</p>
-          <p class="hint">{{ projectDir ? '点击左侧"开始解析"按钮分析项目接口。' : '请先在左侧选择 Spring Boot 项目目录。' }}</p>
+          <p class="hint">{{ projectDir ? '点击左侧"开始解析"按钮分析项目接口。' : '请先在左侧选择项目目录（支持 Java / Go / Python / Rust）。' }}</p>
         </div>
 
         <!-- 接口列表 -->
@@ -420,8 +407,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import { detectProjectLanguage } from '../core/api-doc/parser-registry.js'
-import { parseSpringBootProject, isPlaceholder } from '../core/api-doc/spring-boot-parser.js'
+import { detectProjectLanguage, parseProject } from '../core/api-doc/parser-registry.js'
+import { isPlaceholder } from '../core/api-doc/spring-boot-parser.js'
 import { renderMarkdown, renderDocx, DEFAULT_DOC_MODULES } from '../core/api-doc/api-doc-renderer.js'
 import { loadAllConfigs, loadActiveConfigId, fillApiDocPlaceholders, createAiController } from '../core/llm/llm-service.js'
 import GuideTour from '../components/GuideTour.vue'
@@ -612,38 +599,44 @@ export default {
     async startParsing() {
       if (!this.projectDir || !this.detectedLang) return
       this.parsing = true
-      this.parseLogs = []
       this.parsePercent = 0
-      this.addLog('开始解析项目...')
+      window.dispatchEvent(new CustomEvent('ai-fill-start'))
+      const lang = this.detectedLang
+      this.addLog(`开始解析 ${lang.label} 项目...`)
 
       try {
-        // 1. 扫描所有 Java 文件
-        this.addLog('正在扫描 Java 文件...')
+        // 1. 扫描源文件
+        const ext = lang.sourceExt
+        const ignorePatterns = [
+          '**/.git/**',
+          ...(lang.ignorePatterns || []),
+        ]
+        this.addLog(`正在扫描 ${ext} 文件...`)
         this.parsePercent = 2
         const scanResult = await invoke('scan_directory', {
           dirPath: this.projectDir,
-          customIgnore: ['**/test/**', '**/target/**', '**/build/**', '**/.git/**'],
+          customIgnore: ignorePatterns,
           useGitignore: true,
         })
 
-        const javaFiles = scanResult.files.filter(f => f.ext === '.java')
-        if (javaFiles.length === 0) {
-          this.showToast('未找到 Java 文件', 'warning')
-          this.addLog('⚠️ 未找到 Java 文件')
+        const sourceFiles = scanResult.files.filter(f => f.ext === ext)
+        if (sourceFiles.length === 0) {
+          this.showToast(`未找到 ${ext} 文件`, 'warning')
+          this.addLog(`[警告] 未找到 ${ext} 文件`)
           this.parsing = false
           return
         }
 
-        this.addLog(`发现 ${javaFiles.length} 个 Java 文件`)
+        this.addLog(`发现 ${sourceFiles.length} 个 ${ext} 文件`)
         this.parsePercent = 5
 
         // 2. 分批读取内容
         const allFiles = []
-        for (let i = 0; i < javaFiles.length; i += 50) {
-          const batch = javaFiles.slice(i, i + 50)
-          const loaded = Math.min(i + 50, javaFiles.length)
-          this.addLog(`正在读取文件 (${loaded}/${javaFiles.length})...`)
-          this.parsePercent = 5 + Math.round((loaded / javaFiles.length) * 15)
+        for (let i = 0; i < sourceFiles.length; i += 50) {
+          const batch = sourceFiles.slice(i, i + 50)
+          const loaded = Math.min(i + 50, sourceFiles.length)
+          this.addLog(`正在读取文件 (${loaded}/${sourceFiles.length})...`)
+          this.parsePercent = 5 + Math.round((loaded / sourceFiles.length) * 15)
 
           const readResult = await invoke('read_files_content', {
             files: batch.map(f => ({
@@ -667,9 +660,9 @@ export default {
 
         this.addLog(`文件读取完成，共 ${allFiles.length} 个有效文件`)
 
-        // 3. 解析（带进度回调）
+        // 3. 动态调度对应解析器
         await new Promise(r => setTimeout(r, 50))
-        const result = await parseSpringBootProject(allFiles, (msg, pct) => {
+        const result = await parseProject(lang.id, allFiles, (msg, pct) => {
           this.addLog(msg)
           this.parsePercent = 20 + Math.round(pct * 0.8)
         })
@@ -683,40 +676,23 @@ export default {
 
         const apiCount = result.modules.reduce((s, m) => s + m.apis.length, 0)
         this.parsePercent = 100
-        this.addLog(`✅ 解析完成！${result.modules.length} 个模块，${apiCount} 个接口`)
+        this.addLog(`[完成] 解析完成！${result.modules.length} 个模块，${apiCount} 个接口`)
         this.showToast(`解析完成！发现 ${result.modules.length} 个模块，${apiCount} 个接口`, 'success')
       } catch (e) {
         this.showToast('解析失败: ' + String(e), 'error')
-        this.addLog('❌ 解析失败: ' + String(e))
+        this.addLog('[失败] 解析失败: ' + String(e))
         console.error(e)
       }
 
-      // 保存日志到项目目录
-      await this.saveParseLog()
       this.parsing = false
     },
 
-    async saveParseLog() {
-      if (!this.projectDir || this.parseLogs.length === 0) return
-      try {
-        const logContent = this.parseLogs.map(l => `[${l.time}] ${l.msg}`).join('\n')
-        const logPath = this.projectDir + (this.projectDir.includes('/') ? '/' : '\\') + 'api-doc-parse.log'
-        await writeTextFile(logPath, logContent)
-        this.addLog(`📄 日志已保存: api-doc-parse.log`)
-      } catch (e) {
-        console.warn('保存日志失败:', e)
-      }
-    },
+
 
     addLog(msg) {
       const now = new Date()
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
-      this.parseLogs.push({ time, msg })
-      // 自动滚动到底部
-      this.$nextTick(() => {
-        const panel = this.$refs.logPanel
-        if (panel) panel.scrollTop = panel.scrollHeight
-      })
+      window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level: 'info' } }))
     },
 
     // ===== 模块筛选 =====

@@ -733,11 +733,11 @@ export async function fillApiDocPlaceholders(config, parseResult, onLog = () => 
     if (allPlaceholders.length === 0) return { filled: 0, total: 0 }
 
     const batches = groupByModule(allPlaceholders)
-    onLog(`📋 发现 ${allPlaceholders.length} 个占位符，${batches.length} 个批次`, 'info')
+    onLog(`[信息] 发现 ${allPlaceholders.length} 个占位符，${batches.length} 个批次`, 'info')
 
     let totalFilled = 0
     for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-        if (controller?.cancelled) { onLog(`⛔ 已取消`, 'warn'); break }
+        if (controller?.cancelled) { onLog(`[取消] 已取消`, 'warn'); break }
         if (controller?.paused) {
             onLog(`⏸ 已暂停...`, 'info')
             await controller.waitIfPaused()
@@ -745,16 +745,16 @@ export async function fillApiDocPlaceholders(config, parseResult, onLog = () => 
             onLog(`▶ 已恢复`, 'info')
         }
         const batch = batches[bIdx]
-        onLog(`🔄 [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
+        onLog(`[进行] [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
         try {
             const messages = buildApiDocPrompt(batch.items)
             const responseText = await callLlm(config, messages, { maxTokens: 4096 })
             const { filled } = applyApiDocResults(responseText, batch.items)
             totalFilled += filled
-            onLog(`✅ [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
+            onLog(`[完成] [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
             onBatchDone(batch.name, filled, batch.items.length)
         } catch (e) {
-            onLog(`❌ [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
+            onLog(`[失败] [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
         }
     }
     onLog(`🎉 完成: ${totalFilled}/${allPlaceholders.length} 个字段已填充`, 'info')
@@ -769,12 +769,12 @@ export async function fillDbDocPlaceholders(config, schema, getTableComment, get
     if (allPlaceholders.length === 0) return { filled: 0, total: 0, newOverrides: commentOverrides }
 
     const batches = groupByModule(allPlaceholders)
-    onLog(`📋 发现 ${allPlaceholders.length} 个占位符，${batches.length} 个批次`, 'info')
+    onLog(`[信息] 发现 ${allPlaceholders.length} 个占位符，${batches.length} 个批次`, 'info')
 
     let totalFilled = 0
     let currentOverrides = { ...commentOverrides }
     for (let bIdx = 0; bIdx < batches.length; bIdx++) {
-        if (controller?.cancelled) { onLog(`⛔ 已取消`, 'warn'); break }
+        if (controller?.cancelled) { onLog(`[取消] 已取消`, 'warn'); break }
         if (controller?.paused) {
             onLog(`⏸ 已暂停...`, 'info')
             await controller.waitIfPaused()
@@ -782,17 +782,17 @@ export async function fillDbDocPlaceholders(config, schema, getTableComment, get
             onLog(`▶ 已恢复`, 'info')
         }
         const batch = batches[bIdx]
-        onLog(`🔄 [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
+        onLog(`[进行] [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
         try {
             const messages = buildDbDocPrompt(batch.items)
             const responseText = await callLlm(config, messages, { maxTokens: 4096 })
             const { filled, newOverrides } = applyDbDocResults(responseText, batch.items, schema, currentOverrides)
             totalFilled += filled
             currentOverrides = newOverrides
-            onLog(`✅ [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
+            onLog(`[完成] [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
             onBatchDone(batch.name, filled, batch.items.length)
         } catch (e) {
-            onLog(`❌ [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
+            onLog(`[失败] [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
         }
     }
     onLog(`🎉 完成: ${totalFilled}/${allPlaceholders.length} 个注释已填充`, 'info')

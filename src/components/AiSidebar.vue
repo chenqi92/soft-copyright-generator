@@ -5,7 +5,7 @@
       <!-- 日志面板 -->
       <div v-show="activeTab === 'logs'" class="ai-sidebar-content">
         <div class="ai-sidebar-panel-header">
-          <span>📋 实时日志</span>
+          <span><ClipboardList :size="14" style="vertical-align:-2px;margin-right:4px;" /> 实时日志</span>
           <button class="chat-clear-btn" @click="logs = []" title="清空日志">
             <Trash2 :size="12" />
           </button>
@@ -25,7 +25,7 @@
       <!-- 对话面板 -->
       <div v-show="activeTab === 'chat'" class="ai-sidebar-content">
         <div class="ai-sidebar-panel-header">
-          <span>💬 AI 对话</span>
+          <span><MessageCircle :size="14" style="vertical-align:-2px;margin-right:4px;" /> AI 对话</span>
           <div class="chat-header-actions">
             <label class="chat-think-toggle" title="思考模式">
               <input type="checkbox" v-model="thinkingMode" />
@@ -189,7 +189,7 @@ export default {
         const result = await this.callChatLlm(config, msgs)
         this.chatMessages.push({ role: 'assistant', content: result.content || '', thinking: result.thinking || null })
       } catch (err) {
-        this.chatMessages.push({ role: 'assistant', content: `❌ **错误**：${err.message || err}` })
+        this.chatMessages.push({ role: 'assistant', content: `**错误**：${err.message || err}` })
       } finally {
         this.chatLoading = false
         this.scrollChatBottom()
