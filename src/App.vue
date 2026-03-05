@@ -30,10 +30,15 @@
       </div>
     </header>
 
-    <!-- 主体 - 动态组件 -->
-    <keep-alive>
-      <component :is="currentView" :key="activeTab" />
-    </keep-alive>
+    <!-- 主体 + 侧栏 -->
+    <div style="flex:1;display:flex;overflow:hidden;">
+      <div style="flex:1;overflow:auto;">
+        <keep-alive>
+          <component :is="currentView" :key="activeTab" style="height:100%;" />
+        </keep-alive>
+      </div>
+      <AiSidebar />
+    </div>
   </div>
 </template>
 
@@ -41,6 +46,7 @@
 import { Sun, Moon, FileCode, Plug, Database, Bot, HelpCircle } from 'lucide-vue-next'
 import { markRaw } from 'vue'
 import TabNav from './components/TabNav.vue'
+import AiSidebar from './components/AiSidebar.vue'
 import CopyrightGenerator from './views/CopyrightGenerator.vue'
 import ApiDocGenerator from './views/ApiDocGenerator.vue'
 import DbDocGenerator from './views/DbDocGenerator.vue'
@@ -48,7 +54,7 @@ import AiSettings from './views/AiSettings.vue'
 
 export default {
   name: 'App',
-  components: { TabNav, Sun, Moon, HelpCircle, CopyrightGenerator, ApiDocGenerator, DbDocGenerator, AiSettings },
+  components: { TabNav, AiSidebar, Sun, Moon, HelpCircle, CopyrightGenerator, ApiDocGenerator, DbDocGenerator, AiSettings },
   provide() {
     return {
       showToast: this.showToast,

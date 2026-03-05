@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "交付助手",
-        "width": 1280,
+        "width": 1440,
         "height": 860,
-        "minWidth": 1000,
+        "minWidth": 1100,
         "minHeight": 700,
         "center": true
       }

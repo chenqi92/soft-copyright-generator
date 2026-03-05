@@ -67,7 +67,7 @@ export const LLM_PROVIDERS = [
         id: 'gemini',
         label: 'Google (Gemini)',
         baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        models: ['gemini-3.1-pro-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite-preview-06-17'],
+        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite-preview'],
     },
     {
         id: 'siliconflow',
@@ -295,9 +295,18 @@ export async function callLlm(config, messages, options = {}) {
         throw new Error('LLM 返回空结果')
     }
 
-    const content = data.choices[0].message?.content
+    const msg = data.choices[0].message || {}
+    // 部分模型 (Gemini Pro) 可能返回 content 为 null（使用了 thinking/reasoning 模式）
+    // 尝试多种字段获取内容
+    const content = msg.content
+        || msg.reasoning_content  // DeepSeek R1 等
+        || msg.text               // 某些兼容端点
+        || null
+
     if (!content) {
-        throw new Error('LLM 返回了空内容 (content 为 null/undefined)')
+        // 最后尝试从原始 body 中提取可用文本
+        console.warn('LLM content 为空, 完整响应:', result.body.substring(0, 500))
+        throw new Error('LLM 返回了空内容，该模型可能不完全兼容 OpenAI Chat API。建议换用 gemini-2.5-flash')
     }
 
     return content

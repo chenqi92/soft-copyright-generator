@@ -15,17 +15,6 @@
         <span v-else-if="schema" style="font-size:12px;color:var(--success-500);">
           <Check :size="12" /> {{ schema.tables.length }} 个表，{{ schema.columns.length }} 个字段
         </span>
-        <div class="db-view-switcher" v-if="schema">
-          <button :class="['db-view-btn', { active: viewMode === 'table' }]" @click="viewMode = 'table'">
-            <Database :size="12" /> 数据字典
-          </button>
-          <button :class="['db-view-btn', { active: viewMode === 'er' }]" @click="viewMode = 'er'">
-            <GitBranch :size="12" /> 关系图
-          </button>
-          <button :class="['db-view-btn', { active: viewMode === 'relation' }]" @click="viewMode = 'relation'">
-            <Link :size="12" /> 实体图
-          </button>
-        </div>
         <div class="ai-fill-group" v-if="schema">
           <button v-if="!aiProcessing" class="btn btn-primary btn-sm" @click="startAiFill">
             <Bot :size="14" /> AI 补充
@@ -39,9 +28,20 @@
             <button v-else class="btn btn-primary btn-sm" @click="aiController?.resume()" title="继续">▶ 继续</button>
             <button class="btn btn-danger btn-sm" @click="aiController?.cancel()" title="取消">✕ 取消</button>
           </template>
-          <select v-if="aiConfigs.length > 1" class="ai-model-select" v-model="selectedConfigId" :disabled="aiProcessing">
+          <select class="ai-model-select" v-model="selectedConfigId" :disabled="aiProcessing">
             <option v-for="c in aiConfigs" :key="c.id" :value="c.id">{{ c.name || c.model }}</option>
           </select>
+        </div>
+        <div class="db-view-switcher" v-if="schema">
+          <button :class="['db-view-btn', { active: viewMode === 'table' }]" @click="viewMode = 'table'">
+            <Database :size="12" /> 数据字典
+          </button>
+          <button :class="['db-view-btn', { active: viewMode === 'er' }]" @click="viewMode = 'er'">
+            <GitBranch :size="12" /> 关系图
+          </button>
+          <button :class="['db-view-btn', { active: viewMode === 'relation' }]" @click="viewMode = 'relation'">
+            <Link :size="12" /> 实体图
+          </button>
         </div>
         <button v-if="viewMode === 'table'" class="btn btn-primary btn-sm" @click="exportMarkdown" :disabled="!schema">
           <FileText :size="14" /> 导出 Markdown
@@ -58,13 +58,7 @@
       </div>
     </div>
 
-    <!-- AI 日志面板 -->
-    <div v-if="aiLogs.length > 0" class="ai-log-panel" ref="aiLogPanel">
-      <div v-for="(log, i) in aiLogs" :key="i" :class="['ai-log-item', 'ai-log-' + log.level]">
-        <span class="ai-log-time">{{ log.time }}</span>
-        <span>{{ log.msg }}</span>
-      </div>
-    </div>
+
 
     <!-- 主体 -->
     <div class="app-body">
@@ -518,6 +512,13 @@ export default {
         { target: 'db-test', text: '填写连接信息后，点击测试连接获取数据库列表', doneWhen: 'hasConnected' },
         { target: 'db-fetch', text: '选择数据库后点击获取表结构', doneWhen: 'hasSchema' },
       ],
+    }
+  },
+  async created() {
+    this.aiConfigs = await loadAllConfigs()
+    if (this.aiConfigs.length > 0) {
+      const activeId = await loadActiveConfigId()
+      this.selectedConfigId = activeId || this.aiConfigs[0].id
     }
   },
   computed: {
@@ -1176,11 +1177,7 @@ export default {
     addAiLog(msg, level = 'info') {
       const now = new Date()
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-      this.aiLogs.push({ time, msg, level })
-      this.$nextTick(() => {
-        const panel = this.$refs.aiLogPanel
-        if (panel) panel.scrollTop = panel.scrollHeight
-      })
+      window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level } }))
     },
 
     async startAiFill() {
@@ -1199,7 +1196,7 @@ export default {
       const config = this.aiConfigs.find(c => c.id === this.selectedConfigId) || this.aiConfigs[0]
 
       this.aiProcessing = true
-      this.aiLogs = []
+      window.dispatchEvent(new Event('ai-fill-start'))
       this.aiController = createAiController()
       this.aiProgressText = `使用 ${config.name || config.model}...`
       this.addAiLog(`开始 AI 补充，使用 ${config.name || config.model}`, 'info')

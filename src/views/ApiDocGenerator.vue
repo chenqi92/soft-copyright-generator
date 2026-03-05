@@ -28,7 +28,7 @@
             <button v-else class="btn btn-primary btn-sm" @click="aiController?.resume()" title="继续">▶ 继续</button>
             <button class="btn btn-danger btn-sm" @click="aiController?.cancel()" title="取消">✕ 取消</button>
           </template>
-          <select v-if="aiConfigs.length > 1" class="ai-model-select" v-model="selectedConfigId" :disabled="aiProcessing">
+          <select class="ai-model-select" v-model="selectedConfigId" :disabled="aiProcessing">
             <option v-for="c in aiConfigs" :key="c.id" :value="c.id">{{ c.name || c.model }}</option>
           </select>
         </div>
@@ -41,13 +41,7 @@
       </div>
     </div>
 
-    <!-- AI 日志面板 -->
-    <div v-if="aiLogs.length > 0" class="ai-log-panel" ref="aiLogPanel">
-      <div v-for="(log, i) in aiLogs" :key="i" :class="['ai-log-item', 'ai-log-' + log.level]">
-        <span class="ai-log-time">{{ log.time }}</span>
-        <span>{{ log.msg }}</span>
-      </div>
-    </div>
+
 
     <!-- 主体 -->
     <div class="app-body">
@@ -473,6 +467,13 @@ export default {
       ],
     }
   },
+  async created() {
+    this.aiConfigs = await loadAllConfigs()
+    if (this.aiConfigs.length > 0) {
+      const activeId = await loadActiveConfigId()
+      this.selectedConfigId = activeId || this.aiConfigs[0].id
+    }
+  },
   computed: {
     totalApis() {
       if (!this.parseResult) return 0
@@ -808,11 +809,7 @@ export default {
     addAiLog(msg, level = 'info') {
       const now = new Date()
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`
-      this.aiLogs.push({ time, msg, level })
-      this.$nextTick(() => {
-        const panel = this.$refs.aiLogPanel
-        if (panel) panel.scrollTop = panel.scrollHeight
-      })
+      window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level } }))
     },
 
     async startAiFill() {
@@ -831,7 +828,7 @@ export default {
       const config = this.aiConfigs.find(c => c.id === this.selectedConfigId) || this.aiConfigs[0]
 
       this.aiProcessing = true
-      this.aiLogs = []
+      window.dispatchEvent(new Event('ai-fill-start'))
       this.aiController = createAiController()
       this.aiProgressText = `使用 ${config.name || config.model}...`
       this.addAiLog(`开始 AI 补充，使用 ${config.name || config.model}`, 'info')
