@@ -37,6 +37,41 @@
     --code-line-number: #484f58;
 }
 
+/* ===== 桌面应用：禁止非内容区域文本选中 ===== */
+*,
+*::before,
+*::after {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* 允许选中的内容区域 */
+input,
+textarea,
+select,
+[contenteditable],
+pre,
+code,
+.parse-log-panel,
+.parse-log-item,
+.ai-sidebar-log-list,
+.ai-log-item,
+.chat-messages,
+.chat-msg-bubble,
+.chat-md-content,
+.chat-thinking-content,
+.api-detail-content,
+.md-preview,
+.code-preview,
+.type-fields,
+.table-comment-text,
+.db-table-list,
+.empty-state,
+.tip {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
 /* 浅色模式 */
 .light-theme {
     --bg-app: #f0f2f5;

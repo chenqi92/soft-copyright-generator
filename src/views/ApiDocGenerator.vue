@@ -28,8 +28,11 @@
             <button v-else class="btn btn-primary btn-sm" @click="aiController?.resume()" title="继续">▶ 继续</button>
             <button class="btn btn-danger btn-sm" @click="aiController?.cancel()" title="取消">✕ 取消</button>
           </template>
-          <select class="ai-model-select" v-model="selectedConfigId" :disabled="aiProcessing">
-            <option v-for="c in aiConfigs" :key="c.id" :value="c.id">{{ c.name || c.model }}</option>
+          <select class="ai-model-select" v-model="selectedProviderId" :disabled="aiProcessing" @change="onProviderSelect">
+            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+          </select>
+          <select class="ai-model-select" v-model="selectedModelId" :disabled="aiProcessing">
+            <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
           </select>
         </div>
         <button class="btn btn-primary btn-sm" @click="exportMarkdown" :disabled="!parseResult">
@@ -410,7 +413,7 @@ import { writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { detectProjectLanguage, parseProject } from '../core/api-doc/parser-registry.js'
 import { isPlaceholder } from '../core/api-doc/spring-boot-parser.js'
 import { renderMarkdown, renderDocx, DEFAULT_DOC_MODULES } from '../core/api-doc/api-doc-renderer.js'
-import { loadAllConfigs, loadActiveConfigId, fillApiDocPlaceholders, createAiController } from '../core/llm/llm-service.js'
+import { loadProviderConfigs, loadActiveSelection, fillApiDocPlaceholders, createAiController, getResolvedConfig } from '../core/llm/llm-service.js'
 import GuideTour from '../components/GuideTour.vue'
 import {
   FolderOpen, Search, X, Lightbulb, Check, FileDown, FileText,
@@ -445,8 +448,9 @@ export default {
       aiProgressText: '',
       aiLogs: [],
       aiController: null,
-      aiConfigs: [],
-      selectedConfigId: null,
+      providerConfigs: [],
+      selectedProviderId: null,
+      selectedModelId: null,
       guideVisible: true,
       guideSteps: [
         { target: 'api-select-dir', text: '选择 Spring Boot 项目的根目录', doneWhen: 'hasProject' },
@@ -455,16 +459,23 @@ export default {
     }
   },
   async created() {
-    this.aiConfigs = await loadAllConfigs()
-    if (this.aiConfigs.length > 0) {
-      const activeId = await loadActiveConfigId()
-      this.selectedConfigId = activeId || this.aiConfigs[0].id
+    this.providerConfigs = await loadProviderConfigs()
+    if (this.providerConfigs.length > 0) {
+      const { providerId, modelId } = await loadActiveSelection()
+      const found = this.providerConfigs.find(p => p.id === providerId)
+      const target = found || this.providerConfigs[0]
+      this.selectedProviderId = target.id
+      this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
     }
   },
   computed: {
     totalApis() {
       if (!this.parseResult) return 0
       return this.parseResult.modules.reduce((s, m) => s + m.apis.length, 0)
+    },
+    currentProviderModels() {
+      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      return p ? p.models : []
     },
     filteredModules() {
       if (!this.parseResult) return []
@@ -788,26 +799,35 @@ export default {
       window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level } }))
     },
 
+    onProviderSelect() {
+      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (p && p.models.length > 0) {
+        this.selectedModelId = p.activeModelId || p.models[0].id
+      }
+    },
+
     async startAiFill() {
       if (!this.parseResult || this.aiProcessing) return
 
-      this.aiConfigs = await loadAllConfigs()
-      if (this.aiConfigs.length === 0) {
+      this.providerConfigs = await loadProviderConfigs()
+      if (this.providerConfigs.length === 0) {
         this.showToast('请先在「AI 设置」标签页配置模型', 'warning')
         return
       }
 
-      if (!this.selectedConfigId) {
-        const activeId = await loadActiveConfigId()
-        this.selectedConfigId = activeId || this.aiConfigs[0].id
+      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId) || this.providerConfigs[0]
+      const config = getResolvedConfig(provider, this.selectedModelId)
+      if (!config || !config.model) {
+        this.showToast('请选择模型', 'warning')
+        return
       }
-      const config = this.aiConfigs.find(c => c.id === this.selectedConfigId) || this.aiConfigs[0]
 
       this.aiProcessing = true
       window.dispatchEvent(new Event('ai-fill-start'))
       this.aiController = createAiController()
-      this.aiProgressText = `使用 ${config.name || config.model}...`
-      this.addAiLog(`开始 AI 补充，使用 ${config.name || config.model}`, 'info')
+      const modelLabel = provider.models.find(m => m.id === config.model)?.label || config.model
+      this.aiProgressText = `使用 ${provider.label} / ${modelLabel}...`
+      this.addAiLog(`开始 AI 补充，使用 ${provider.label} / ${modelLabel}`, 'info')
 
       try {
         const result = await fillApiDocPlaceholders(
@@ -818,7 +838,6 @@ export default {
             this.aiProgressText = msg
           },
           (batchName, filled, batchTotal) => {
-            // 每批完成后实时刷新视图
             this.parseResult = { ...this.parseResult }
           },
           this.aiController,

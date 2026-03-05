@@ -1,86 +1,73 @@
 <template>
   <div style="display:flex;flex-direction:column;height:100%;">
-    <GuideTour
-      :steps="guideSteps"
-      :enabled="guideVisible"
-      :conditions="guideConditions"
-      @finish="guideVisible = false"
-    />
     <!-- 头部操作栏 -->
     <div class="view-header">
       <div class="header-actions">
-        <span style="font-size:12px;color:var(--text-secondary);">配置大模型 API 用于智能补充文档占位符</span>
+        <span style="font-size:12px;color:var(--text-secondary);">配置大模型 API 密钥和可用模型</span>
       </div>
     </div>
 
     <!-- 主体 -->
     <div class="app-body">
-      <!-- 左侧：已保存的配置列表 -->
+      <!-- 左侧：已保存的厂商列表 -->
       <aside class="config-panel">
         <div class="card">
           <div class="card-header">
-            <h3><Bot :size="14" /> 模型配置</h3>
+            <h3><Bot :size="14" /> 厂商配置</h3>
           </div>
           <div class="card-body" style="padding:6px;">
-            <button class="ai-add-btn" @click="addNewConfig" data-guide="ai-add">
-              <Plus :size="14" /> 新增配置
+            <button class="ai-add-btn" @click="addNewProvider">
+              <Plus :size="14" /> 新增厂商
             </button>
 
             <div class="ai-cfg-list">
               <div
-                v-for="cfg in configs"
+                v-for="cfg in providerConfigs"
                 :key="cfg.id"
-                :class="['ai-cfg-item', { active: editingId === cfg.id, 'is-active-cfg': activeId === cfg.id }]"
-                @click="selectConfig(cfg)"
+                :class="['ai-cfg-item', { active: editingId === cfg.id }]"
+                @click="selectProvider(cfg)"
               >
                 <div class="ai-cfg-item-main">
-                  <span class="ai-cfg-item-name">{{ cfg.name || '未命名' }}</span>
-                  <span class="ai-cfg-item-model">{{ cfg.model }}</span>
+                  <span class="ai-cfg-item-name">{{ cfg.label || '未命名' }}</span>
+                  <span class="ai-cfg-item-model">{{ cfg.models.length }} 个模型</span>
                 </div>
                 <div class="ai-cfg-item-actions">
-                  <button
-                    v-if="activeId !== cfg.id"
-                    class="ai-cfg-act-btn"
-                    title="设为默认"
-                    @click.stop="setDefault(cfg)"
-                  ><Star :size="12" /></button>
-                  <Star v-else :size="12" class="ai-cfg-star-active" />
-                  <button class="ai-cfg-act-btn ai-cfg-del" title="删除" @click.stop="removeConfig(cfg)">
+                  <button class="ai-cfg-act-btn ai-cfg-del" title="删除" @click.stop="removeProvider(cfg)">
                     <Trash2 :size="12" />
                   </button>
                 </div>
               </div>
             </div>
 
-            <div v-if="configs.length === 0" class="ai-empty-hint">
+            <div v-if="providerConfigs.length === 0" class="ai-empty-hint">
               暂无配置，点击上方按钮新增
             </div>
           </div>
         </div>
       </aside>
 
-      <!-- 右侧：配置编辑区 -->
+      <!-- 右侧：厂商编辑 + 模型管理 -->
       <main class="content-panel">
         <div v-if="form" class="ai-edit-area">
-          <!-- 配置名称 -->
+          <!-- 厂商基本信息 -->
           <div class="card">
             <div class="card-header">
-              <h3><Settings :size="14" /> {{ form.name || '新配置' }}</h3>
+              <h3><Settings :size="14" /> {{ form.label || '新厂商配置' }}</h3>
               <span v-if="saved" class="ai-saved-badge"><Check :size="12" /> 已保存</span>
             </div>
             <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
-              <!-- 配置名称 -->
-              <div class="form-group">
-                <label class="form-label">配置名称</label>
-                <input type="text" class="form-input" v-model="form.name" placeholder="例如：DeepSeek 日常使用" />
-              </div>
-
               <!-- 提供商 -->
               <div class="form-group">
                 <label class="form-label">模型提供商</label>
                 <select class="form-input" v-model="form.providerId" @change="onProviderChange">
-                  <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.label }}</option>
+                  <option v-for="p in providerPresets" :key="p.id" :value="p.id">{{ p.label }}</option>
                 </select>
+              </div>
+
+              <!-- 配置名称 -->
+              <div class="form-group">
+                <label class="form-label">显示名称 <span class="form-label-hint">(留空则使用提供商名称)</span></label>
+                <input type="text" class="form-input" v-model="form.label" placeholder="例如：DeepSeek 日常" />
               </div>
 
               <!-- API 地址 -->
@@ -89,12 +76,11 @@
                   API 地址 (Base URL)
                   <span v-if="form.providerId !== 'custom'" class="form-label-hint">(已预填，可修改)</span>
                 </label>
-                <input type="text" class="form-input" v-model="form.baseUrl"
-                       placeholder="https://api.example.com/v1" />
+                <input type="text" class="form-input" v-model="form.baseUrl" placeholder="https://api.example.com/v1" />
               </div>
 
               <!-- API Key -->
-              <div class="form-group" data-guide="ai-apikey">
+              <div class="form-group">
                 <label class="form-label">API Key</label>
                 <div style="display:flex;gap:6px;">
                   <input :type="showKey ? 'text' : 'password'" class="form-input" style="flex:1;"
@@ -106,29 +92,6 @@
                 </div>
               </div>
 
-              <!-- 模型名称 -->
-              <div class="form-group">
-                <label class="form-label">
-                  模型名称
-                  <span class="form-label-hint">(可直接输入任意模型名)</span>
-                </label>
-                <input type="text" class="form-input"
-                       v-model="form.model"
-                       :placeholder="modelSuggestions.length > 0 ? modelSuggestions[0] : '输入模型名称'"
-                       list="model-suggestions" />
-                <datalist id="model-suggestions">
-                  <option v-for="m in modelSuggestions" :key="m" :value="m" />
-                </datalist>
-                <div v-if="modelSuggestions.length > 0" class="ai-model-tags">
-                  <span
-                    v-for="m in modelSuggestions"
-                    :key="m"
-                    :class="['ai-model-tag', { active: form.model === m }]"
-                    @click="form.model = m"
-                  >{{ m }}</span>
-                </div>
-              </div>
-
               <!-- 操作按钮 -->
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn btn-secondary btn-sm" @click="doTest" :disabled="testing || !isFormValid">
@@ -136,7 +99,7 @@
                   <Wifi v-else :size="14" />
                   {{ testing ? '测试中...' : '测试连接' }}
                 </button>
-                <button class="btn btn-primary btn-sm" @click="save" :disabled="!isFormValid" data-guide="ai-save">
+                <button class="btn btn-primary btn-sm" @click="save" :disabled="!isFormValid">
                   <Save :size="14" /> 保存配置
                 </button>
                 <span v-if="testResult" :style="{ fontSize: '12px', color: testResult.success ? 'var(--success-500)' : 'var(--danger-500)' }">
@@ -146,29 +109,82 @@
             </div>
           </div>
 
-          <!-- 使用说明 -->
+          <!-- 模型管理 -->
           <div class="card">
             <div class="card-header">
-              <h3><Lightbulb :size="14" /> 使用说明</h3>
+              <h3><Layers :size="14" /> 可用模型</h3>
+              <button class="btn btn-secondary btn-sm" @click="showAddModel = true">
+                <Plus :size="12" /> 自定义模型
+              </button>
             </div>
-            <div class="card-body">
-              <div class="ai-help-list">
-                <div class="ai-help-item">
-                  <span class="ai-help-step">1</span>
-                  <span>新增配置 → 选择提供商 → 填入 API Key 和模型名称 → 保存</span>
+            <div class="card-body" style="padding:0;">
+              <table class="ai-model-table">
+                <thead>
+                  <tr>
+                    <th style="width:30%;">模型 ID</th>
+                    <th style="width:20%;">显示名</th>
+                    <th style="width:22%;">能力</th>
+                    <th style="width:18%;">上下文长度</th>
+                    <th style="width:10%;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(m, idx) in form.models" :key="m.id">
+                    <td class="model-id-cell">{{ m.id }}</td>
+                    <td>{{ m.label }}</td>
+                    <td>
+                      <span v-if="m.capabilities?.multimodal" class="cap-tag cap-multimodal">多模态</span>
+                      <span v-if="m.capabilities?.deepThinking" class="cap-tag cap-thinking">深度思考</span>
+                      <span v-if="!m.capabilities?.multimodal && !m.capabilities?.deepThinking" class="cap-tag cap-text">文本</span>
+                    </td>
+                    <td>{{ formatCtx(m.contextLength) }}</td>
+                    <td>
+                      <button class="ai-cfg-act-btn ai-cfg-del" @click="removeModel(idx)" title="移除">
+                        <X :size="12" />
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="form.models.length === 0">
+                    <td colspan="5" style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;">
+                      暂无模型，请添加自定义模型
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 新增自定义模型弹窗 -->
+          <div v-if="showAddModel" class="ai-modal-mask" @click.self="showAddModel = false">
+            <div class="ai-modal">
+              <div class="ai-modal-header">
+                <span>新增自定义模型</span>
+                <button class="ai-cfg-act-btn" @click="showAddModel = false"><X :size="14" /></button>
+              </div>
+              <div class="ai-modal-body">
+                <div class="form-group">
+                  <label class="form-label">模型 ID</label>
+                  <input type="text" class="form-input" v-model="newModel.id" placeholder="例如：my-custom-model" />
                 </div>
-                <div class="ai-help-item">
-                  <span class="ai-help-step">2</span>
-                  <span>点击 <Star :size="11" style="vertical-align:middle;color:var(--warning-400);" /> 将常用配置设为默认（AI 补充时优先使用）</span>
+                <div class="form-group">
+                  <label class="form-label">显示名称</label>
+                  <input type="text" class="form-input" v-model="newModel.label" placeholder="例如：自定义模型" />
                 </div>
-                <div class="ai-help-item">
-                  <span class="ai-help-step">3</span>
-                  <span>可保存多个配置，在「接口文档」或「数据库文档」点击 AI 补充时可选择使用哪个</span>
+                <div class="form-group">
+                  <label class="form-label">能力标签</label>
+                  <div style="display:flex;gap:12px;">
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.multimodal" /> 多模态</label>
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.deepThinking" /> 深度思考</label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">上下文长度 (tokens)</label>
+                  <input type="number" class="form-input" v-model.number="newModel.contextLength" placeholder="32768" />
                 </div>
               </div>
-              <div class="tip" style="margin-top:12px;">
-                <Lightbulb :size="14" class="tip-icon" />
-                <span>所有模型均使用 OpenAI 兼容协议，支持 Ollama、vLLM、LM Studio 等本地部署。模型名称可自由填写。配置保存后重启不会丢失。</span>
+              <div class="ai-modal-footer">
+                <button class="btn btn-secondary btn-sm" @click="showAddModel = false">取消</button>
+                <button class="btn btn-primary btn-sm" @click="addCustomModel" :disabled="!newModel.id">添加</button>
               </div>
             </div>
           </div>
@@ -177,7 +193,7 @@
         <!-- 未选择任何配置时的空状态 -->
         <div v-else class="ai-edit-area ai-empty-state">
           <Bot :size="48" style="color:var(--text-muted);" />
-          <p>选择左侧已有配置进行编辑，或点击「新增配置」</p>
+          <p>选择左侧已有厂商进行编辑，或点击「新增厂商」</p>
         </div>
       </main>
     </div>
@@ -186,117 +202,112 @@
 
 <script>
 import {
-  Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Lightbulb,
-  Plus, Trash2, Star
+  Bot, Settings, Check, Eye, EyeOff, Wifi, Save,
+  Plus, Trash2, X, Layers
 } from 'lucide-vue-next'
 import {
-  LLM_PROVIDERS, loadAllConfigs, loadActiveConfigId, setActiveConfigId,
-  upsertConfig, deleteConfig, testLlmConnection, generateConfigName, nextId
+  LLM_PROVIDERS, loadProviderConfigs, upsertProviderConfig,
+  deleteProviderConfig, testLlmConnection, getDefaultModels,
+  getResolvedConfig, nextId
 } from '../core/llm/llm-service.js'
-import GuideTour from '../components/GuideTour.vue'
 
 export default {
   name: 'AiSettings',
-  components: { GuideTour, Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Lightbulb, Plus, Trash2, Star },
+  components: { Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Plus, Trash2, X, Layers },
   inject: ['showToast'],
   data() {
     return {
-      providers: LLM_PROVIDERS,
-      configs: [],
-      activeId: null,
+      providerPresets: LLM_PROVIDERS,
+      providerConfigs: [],
       editingId: null,
       form: null,
       showKey: false,
       testing: false,
       testResult: null,
       saved: false,
-      guideVisible: true,
-      guideSteps: [
-        { target: 'ai-add', text: '点击新增配置，添加一个 AI 模型配置', doneWhen: 'hasForm' },
-        { target: 'ai-apikey', text: '填写模型提供商的 API Key', doneWhen: 'hasKey' },
-        { target: 'ai-save', text: '点击保存配置，即可在其他页面使用 AI 补充', doneWhen: 'hasSaved' },
-      ],
+      showAddModel: false,
+      newModel: { id: '', label: '', multimodal: false, deepThinking: false, contextLength: 32768 },
     }
   },
   computed: {
-    currentProvider() {
-      if (!this.form) return null
-      return this.providers.find(p => p.id === this.form.providerId)
-    },
-    modelSuggestions() {
-      return this.currentProvider ? this.currentProvider.models : []
-    },
     isFormValid() {
-      return this.form && this.form.baseUrl && this.form.apiKey && this.form.model
-    },
-    guideConditions() {
-      return {
-        hasForm: !!this.form,
-        hasKey: !!(this.form && this.form.apiKey),
-        hasSaved: this.configs.length > 0,
-      }
+      return this.form && this.form.baseUrl && this.form.apiKey && this.form.models.length > 0
     },
   },
   async mounted() {
     await this.loadData()
-    this.guideVisible = localStorage.getItem('guideEnabled') !== 'false'
-    this._guideHandler = (e) => { this.guideVisible = e.detail }
-    window.addEventListener('guide-toggle', this._guideHandler)
-  },
-  beforeUnmount() {
-    if (this._guideHandler) window.removeEventListener('guide-toggle', this._guideHandler)
   },
   methods: {
     async loadData() {
-      this.configs = await loadAllConfigs()
-      this.activeId = await loadActiveConfigId()
-      // 自动选中激活配置或第一个
-      if (this.configs.length > 0) {
-        const target = this.configs.find(c => c.id === this.activeId) || this.configs[0]
-        this.selectConfig(target)
+      this.providerConfigs = await loadProviderConfigs()
+      if (this.providerConfigs.length > 0) {
+        this.selectProvider(this.providerConfigs[0])
       }
     },
 
-    selectConfig(cfg) {
+    selectProvider(cfg) {
       this.editingId = cfg.id
-      this.form = { ...cfg }
+      this.form = JSON.parse(JSON.stringify(cfg))
       this.testResult = null
       this.saved = false
     },
 
-    addNewConfig() {
-      const defaultProvider = this.providers[1] // DeepSeek
+    addNewProvider() {
+      const defaultPreset = this.providerPresets[1] // DeepSeek
       const newCfg = {
         id: nextId(),
-        name: '',
-        providerId: defaultProvider.id,
-        baseUrl: defaultProvider.baseUrl,
+        providerId: defaultPreset.id,
+        label: defaultPreset.label,
+        baseUrl: defaultPreset.baseUrl,
         apiKey: '',
-        model: defaultProvider.models[0] || '',
+        models: getDefaultModels(defaultPreset.id),
+        activeModelId: defaultPreset.models[0]?.id || '',
       }
       this.editingId = newCfg.id
-      this.form = { ...newCfg }
+      this.form = JSON.parse(JSON.stringify(newCfg))
       this.testResult = null
       this.saved = false
     },
 
     onProviderChange() {
-      const provider = this.currentProvider
-      if (provider && provider.id !== 'custom') {
-        this.form.baseUrl = provider.baseUrl
-        if (provider.models.length > 0 && !provider.models.includes(this.form.model)) {
-          this.form.model = provider.models[0]
-        }
+      const preset = this.providerPresets.find(p => p.id === this.form.providerId)
+      if (preset && preset.id !== 'custom') {
+        this.form.baseUrl = preset.baseUrl
+        this.form.label = preset.label
+        this.form.models = getDefaultModels(preset.id)
+        this.form.activeModelId = preset.models[0]?.id || ''
       }
       this.testResult = null
       this.saved = false
     },
 
+    removeModel(idx) {
+      this.form.models.splice(idx, 1)
+    },
+
+    addCustomModel() {
+      if (!this.newModel.id) return
+      this.form.models.push({
+        id: this.newModel.id,
+        label: this.newModel.label || this.newModel.id,
+        capabilities: {
+          multimodal: this.newModel.multimodal,
+          deepThinking: this.newModel.deepThinking,
+        },
+        contextLength: this.newModel.contextLength || 32768,
+        custom: true,
+      })
+      this.newModel = { id: '', label: '', multimodal: false, deepThinking: false, contextLength: 32768 }
+      this.showAddModel = false
+    },
+
     async doTest() {
+      if (!this.form.models.length) return
       this.testing = true
       this.testResult = null
       try {
-        this.testResult = await testLlmConnection(this.form)
+        const config = getResolvedConfig(this.form, this.form.models[0].id)
+        this.testResult = await testLlmConnection(config)
       } catch (e) {
         this.testResult = { success: false, message: String(e) }
       }
@@ -304,42 +315,40 @@ export default {
     },
 
     async save() {
-      if (!this.form.name) {
-        this.form.name = generateConfigName(this.form)
+      if (!this.form.label) {
+        const preset = this.providerPresets.find(p => p.id === this.form.providerId)
+        this.form.label = preset ? preset.label : this.form.providerId
       }
-      const saved = await upsertConfig(this.form)
-      this.configs = await loadAllConfigs()
-
-      // 如果是第一个配置或没有激活配置，自动设为默认
-      if (!this.activeId || this.configs.length === 1) {
-        this.activeId = saved.id
-        await setActiveConfigId(saved.id)
+      if (!this.form.activeModelId && this.form.models.length > 0) {
+        this.form.activeModelId = this.form.models[0].id
       }
-
-      this.editingId = saved.id
+      await upsertProviderConfig(this.form)
+      this.providerConfigs = await loadProviderConfigs()
+      this.editingId = this.form.id
       this.saved = true
       this.showToast('配置已保存', 'success')
       setTimeout(() => { this.saved = false }, 3000)
     },
 
-    async setDefault(cfg) {
-      this.activeId = cfg.id
-      await setActiveConfigId(cfg.id)
-      this.showToast(`已将「${cfg.name || cfg.model}」设为默认模型`, 'success')
-    },
-
-    async removeConfig(cfg) {
-      this.configs = await deleteConfig(cfg.id)
-      this.activeId = await loadActiveConfigId()
+    async removeProvider(cfg) {
+      await deleteProviderConfig(cfg.id)
+      this.providerConfigs = await loadProviderConfigs()
       if (this.editingId === cfg.id) {
-        if (this.configs.length > 0) {
-          this.selectConfig(this.configs[0])
+        if (this.providerConfigs.length > 0) {
+          this.selectProvider(this.providerConfigs[0])
         } else {
           this.form = null
           this.editingId = null
         }
       }
       this.showToast('配置已删除', 'success')
+    },
+
+    formatCtx(n) {
+      if (!n) return '-'
+      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
+      if (n >= 1000) return `${(n / 1000).toFixed(0)}K`
+      return String(n)
     },
   },
 }
@@ -430,9 +439,6 @@ export default {
 .ai-cfg-item-model {
   font-size: 10px;
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .ai-cfg-item-actions {
@@ -461,22 +467,12 @@ export default {
 .ai-cfg-del:hover {
   color: var(--danger-500);
 }
-.ai-cfg-star-active {
-  color: var(--warning-400);
-  fill: var(--warning-400);
-}
 
 .ai-empty-hint {
   text-align: center;
   padding: 20px 8px;
   font-size: 12px;
   color: var(--text-muted);
-}
-
-/* 活跃配置左侧高亮条 */
-.ai-cfg-item.is-active-cfg {
-  border-left: 3px solid var(--warning-400);
-  padding-left: 7px;
 }
 
 /* 表单 hint */
@@ -487,34 +483,6 @@ export default {
   margin-left: 4px;
 }
 
-/* 模型标签 */
-.ai-model-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-.ai-model-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  font-size: 11px;
-  border-radius: 10px;
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  border: 1px solid var(--border-color);
-  transition: all 0.15s;
-}
-.ai-model-tag:hover {
-  border-color: var(--primary-400);
-  color: var(--primary-500);
-}
-.ai-model-tag.active {
-  background: var(--primary-500);
-  color: #fff;
-  border-color: var(--primary-600);
-}
-
 .ai-saved-badge {
   display: flex;
   align-items: center;
@@ -523,29 +491,108 @@ export default {
   color: var(--success-500);
 }
 
-.ai-help-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* 模型表格 */
+.ai-model-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
 }
-.ai-help-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
+.ai-model-table th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+}
+.ai-model-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.ai-model-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+.model-id-cell {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
   color: var(--text-secondary);
 }
-.ai-help-step {
+
+/* 能力标签 */
+.cap-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-right: 3px;
+}
+.cap-multimodal {
+  background: rgba(99,102,241,0.15);
+  color: var(--primary-400);
+}
+.cap-thinking {
+  background: rgba(234,179,8,0.15);
+  color: var(--warning-500);
+}
+.cap-text {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+.cap-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.cap-check input {
+  accent-color: var(--primary-500);
+}
+
+/* 自定义模型弹窗 */
+.ai-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--primary-500);
-  color: #fff;
-  font-size: 11px;
+  z-index: 1000;
+}
+.ai-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.ai-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
   font-weight: 600;
-  flex-shrink: 0;
+  color: var(--text-primary);
+}
+.ai-modal-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
 }
 </style>

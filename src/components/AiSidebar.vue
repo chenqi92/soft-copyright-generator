@@ -38,9 +38,12 @@
           </div>
         </div>
         <div class="chat-model-bar">
-          <select class="chat-model-select" v-model="selectedConfigId">
-            <option :value="null" disabled>选择模型...</option>
-            <option v-for="c in configs" :key="c.id" :value="c.id">{{ c.name || c.model }}</option>
+          <select class="chat-model-select" v-model="selectedProviderId" @change="onProviderSelect" style="flex:1;">
+            <option :value="null" disabled>选择厂商...</option>
+            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+          </select>
+          <select class="chat-model-select" v-model="selectedModelId" style="flex:1;">
+            <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
           </select>
         </div>
         <div class="chat-messages" ref="chatMessagesRef">
@@ -70,7 +73,7 @@
             @keydown="onChatKeydown" @input="autoResizeChat" :disabled="chatLoading"
           ></textarea>
           <button class="chat-send-btn" @click="sendChat"
-            :disabled="!chatInput.trim() || chatLoading || !selectedConfigId" title="发送">
+            :disabled="!chatInput.trim() || chatLoading || !selectedProviderId || !selectedModelId" title="发送">
             <Send :size="16" />
           </button>
         </div>
@@ -102,7 +105,7 @@
 <script>
 import { ClipboardList, MessageCircle, Bot, Send, Brain, Trash2 } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
-import { loadAllConfigs, loadActiveConfigId } from '../core/llm/llm-service.js'
+import { loadProviderConfigs, loadActiveSelection, getResolvedConfig } from '../core/llm/llm-service.js'
 import { marked } from 'marked'
 
 marked.setOptions({ breaks: true, gfm: true })
@@ -114,8 +117,9 @@ export default {
     return {
       activeTab: null,
       logs: [],
-      configs: [],
-      selectedConfigId: null,
+      providerConfigs: [],
+      selectedProviderId: null,
+      selectedModelId: null,
       chatMessages: [],
       chatInput: '',
       chatLoading: false,
@@ -143,18 +147,36 @@ export default {
     if (this._logHandler) window.removeEventListener('ai-log', this._logHandler)
     if (this._aiStartHandler) window.removeEventListener('ai-fill-start', this._aiStartHandler)
   },
+  computed: {
+    currentProviderModels() {
+      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      return p ? p.models : []
+    },
+  },
   methods: {
     toggleTab(tab) {
       this.activeTab = this.activeTab === tab ? null : tab
-      if (tab === 'chat' && this.configs.length === 0) this.loadConfigs()
+      if (tab === 'chat' && this.providerConfigs.length === 0) this.loadConfigs()
+    },
+    onProviderSelect() {
+      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (p && p.models.length > 0) {
+        this.selectedModelId = p.activeModelId || p.models[0].id
+      }
     },
     async loadConfigs() {
-      this.configs = await loadAllConfigs()
-      const activeId = await loadActiveConfigId()
-      if (activeId && this.configs.find(c => c.id === activeId)) {
-        this.selectedConfigId = activeId
-      } else if (this.configs.length > 0) {
-        this.selectedConfigId = this.configs[0].id
+      this.providerConfigs = await loadProviderConfigs()
+      const { providerId, modelId } = await loadActiveSelection()
+      if (providerId) {
+        const found = this.providerConfigs.find(p => p.id === providerId)
+        if (found) {
+          this.selectedProviderId = found.id
+          this.selectedModelId = modelId || found.activeModelId || (found.models[0]?.id || '')
+        }
+      }
+      if (!this.selectedProviderId && this.providerConfigs.length > 0) {
+        this.selectedProviderId = this.providerConfigs[0].id
+        this.selectedModelId = this.providerConfigs[0].models[0]?.id || ''
       }
     },
     renderMd(text) {
@@ -176,9 +198,10 @@ export default {
     },
     async sendChat() {
       const text = this.chatInput.trim()
-      if (!text || this.chatLoading || !this.selectedConfigId) return
-      const config = this.configs.find(c => c.id === this.selectedConfigId)
-      if (!config) return
+      if (!text || this.chatLoading || !this.selectedProviderId || !this.selectedModelId) return
+      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (!provider) return
+      const config = getResolvedConfig(provider, this.selectedModelId)
       this.chatMessages.push({ role: 'user', content: text })
       this.chatInput = ''
       this.$nextTick(() => { if (this.$refs.chatInputRef) this.$refs.chatInputRef.style.height = 'auto' })

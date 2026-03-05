@@ -344,10 +344,15 @@ export async function renderDocx(parseResult, docModules) {
                                 children: [makeText('请求示例：', { size: 21, bold: true })],
                                 spacing: { before: 100, after: 60 },
                             }))
-                            children.push(new Paragraph({
-                                children: [makeText(JSON.stringify(api.requestBody.example, null, 2), { size: 18 })],
-                                spacing: { after: 80 },
-                            }))
+                            const reqJsonLines = JSON.stringify(api.requestBody.example, null, 4).split('\n')
+                            for (const jLine of reqJsonLines) {
+                                children.push(new Paragraph({
+                                    children: [new TextRun({ text: jLine, font: 'Consolas', size: 17, color: '333333' })],
+                                    spacing: { before: 0, after: 0, line: 276 },
+                                    shading: { fill: 'f5f5f5' },
+                                }))
+                            }
+                            children.push(new Paragraph({ children: [], spacing: { after: 80 } }))
                         }
                         break
 
@@ -357,10 +362,15 @@ export async function renderDocx(parseResult, docModules) {
                                 children: [makeText('返回示例：', { size: 21, bold: true })],
                                 spacing: { before: 100, after: 60 },
                             }))
-                            children.push(new Paragraph({
-                                children: [makeText(JSON.stringify(api.response.example, null, 2), { size: 18 })],
-                                spacing: { after: 80 },
-                            }))
+                            const resJsonLines = JSON.stringify(api.response.example, null, 4).split('\n')
+                            for (const jLine of resJsonLines) {
+                                children.push(new Paragraph({
+                                    children: [new TextRun({ text: jLine, font: 'Consolas', size: 17, color: '333333' })],
+                                    spacing: { before: 0, after: 0, line: 276 },
+                                    shading: { fill: 'f5f5f5' },
+                                }))
+                            }
+                            children.push(new Paragraph({ children: [], spacing: { after: 80 } }))
                         }
                         break
                 }
