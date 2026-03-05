@@ -97,11 +97,18 @@ export default {
       this.$emit('finish')
     },
     startTracking() {
+      this.stopTracking()
       this.updatePosition()
-      this._raf = setInterval(() => this.updatePosition(), 500)
+      this._onResize = () => this.updatePosition()
+      window.addEventListener('resize', this._onResize)
+      window.addEventListener('scroll', this._onResize, true) // capture 阶段捕获所有滚动
     },
     stopTracking() {
-      if (this._raf) { clearInterval(this._raf); this._raf = null }
+      if (this._onResize) {
+        window.removeEventListener('resize', this._onResize)
+        window.removeEventListener('scroll', this._onResize, true)
+        this._onResize = null
+      }
     },
     updatePosition() {
       if (!this.currentStep) return

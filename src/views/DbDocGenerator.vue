@@ -458,7 +458,7 @@ export default {
     Database, Check, FileDown, FileText, ChevronRight, Filter, Settings,
     Lightbulb, Wifi, Download, GitBranch, Key, Link, X, Bot
   },
-  inject: ['showToast', 'getGuideEnabled'],
+  inject: ['showToast', 'guideEnabled'],
   data() {
     return {
       config: {
@@ -590,6 +590,10 @@ export default {
     },
   },
   watch: {
+    guideEnabled: {
+      handler(ref) { this.guideVisible = ref?.value !== false },
+      deep: true,
+    },
     viewMode(val) {
       this.diagramScale = 1
       this.diagramX = 0
@@ -622,12 +626,7 @@ export default {
     },
   },
   mounted() {
-    this.guideVisible = localStorage.getItem('guideEnabled') !== 'false'
-    this._guideHandler = (e) => { this.guideVisible = e.detail }
-    window.addEventListener('guide-toggle', this._guideHandler)
-  },
-  beforeUnmount() {
-    if (this._guideHandler) window.removeEventListener('guide-toggle', this._guideHandler)
+    this.guideVisible = this.guideEnabled?.value !== false
   },
   methods: {
     // ===== 数据库类型切换 =====

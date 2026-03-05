@@ -324,7 +324,7 @@ export default {
     Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
     ChevronDown, Shuffle
   },
-  inject: ['showToast', 'getGuideEnabled'],
+  inject: ['showToast', 'guideEnabled'],
   data() {
     return {
       config: {
@@ -391,12 +391,13 @@ export default {
     },
   },
   mounted() {
-    this.guideVisible = localStorage.getItem('guideEnabled') !== 'false'
-    this._guideHandler = (e) => { this.guideVisible = e.detail }
-    window.addEventListener('guide-toggle', this._guideHandler)
+    this.guideVisible = this.guideEnabled?.value !== false
   },
-  beforeUnmount() {
-    if (this._guideHandler) window.removeEventListener('guide-toggle', this._guideHandler)
+  watch: {
+    guideEnabled: {
+      handler(ref) { this.guideVisible = ref?.value !== false },
+      deep: true,
+    },
   },
   methods: {
     closeFontDropdown() {

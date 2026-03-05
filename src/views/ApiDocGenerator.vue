@@ -427,7 +427,7 @@ export default {
     FolderOpen, Search, X, Lightbulb, Check, FileDown, FileText,
     Plug, Filter, Settings, ChevronRight, Scan, Bot
   },
-  inject: ['showToast', 'getGuideEnabled'],
+  inject: ['showToast', 'guideEnabled'],
   data() {
     return {
       projectDir: '',
@@ -551,12 +551,13 @@ export default {
     },
   },
   mounted() {
-    this.guideVisible = localStorage.getItem('guideEnabled') !== 'false'
-    this._guideHandler = (e) => { this.guideVisible = e.detail }
-    window.addEventListener('guide-toggle', this._guideHandler)
+    this.guideVisible = this.guideEnabled?.value !== false
   },
-  beforeUnmount() {
-    if (this._guideHandler) window.removeEventListener('guide-toggle', this._guideHandler)
+  watch: {
+    guideEnabled: {
+      handler(ref) { this.guideVisible = ref?.value !== false },
+      deep: true,
+    },
   },
   methods: {
     // ===== 项目选择 =====

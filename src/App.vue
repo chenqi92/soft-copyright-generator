@@ -51,12 +51,13 @@
 
 <script>
 import { Sun, Moon, FileCode, Plug, Database, Bot, HelpCircle } from 'lucide-vue-next'
-import { markRaw } from 'vue'
+import { markRaw, computed } from 'vue'
 import AiSidebar from './components/AiSidebar.vue'
 import CopyrightGenerator from './views/CopyrightGenerator.vue'
 import ApiDocGenerator from './views/ApiDocGenerator.vue'
 import DbDocGenerator from './views/DbDocGenerator.vue'
 import AiSettings from './views/AiSettings.vue'
+import { loadProviderConfigs } from './core/llm/llm-service.js'
 
 export default {
   name: 'App',
@@ -64,8 +65,12 @@ export default {
   provide() {
     return {
       showToast: this.showToast,
-      getGuideEnabled: () => this.guideEnabled,
+      guideEnabled: computed(() => this.guideEnabled),
     }
+  },
+  mounted() {
+    // 预加载 Tauri store，避免首次访问 AI 配置时的冷启动延迟
+    loadProviderConfigs().catch(() => {})
   },
   data() {
     return {
@@ -99,7 +104,6 @@ export default {
     toggleGuide() {
       this.guideEnabled = !this.guideEnabled
       localStorage.setItem('guideEnabled', this.guideEnabled)
-      window.dispatchEvent(new CustomEvent('guide-toggle', { detail: this.guideEnabled }))
     },
     showToast(message, type = 'info') {
       this.toast = { show: true, message, type }
