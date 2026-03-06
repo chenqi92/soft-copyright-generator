@@ -3,6 +3,7 @@
     <GuideTour
       :steps="guideSteps"
       :enabled="guideVisible"
+      :active="isActive"
       :conditions="guideConditions"
       @finish="guideFinished = true"
     />
@@ -216,7 +217,7 @@ export default {
     FolderOpen, Search, X, Check, FileDown, FileText, Settings, ChevronRight, Bot, BookOpen,
     SectionEditor, TemplateSelector, ReferenceFiles, GuideTour,
   },
-  inject: ['showToast'],
+  inject: ['showToast', 'guide'],
   data() {
     return {
       projectDirs: [],
@@ -240,6 +241,7 @@ export default {
       selectedModelId: null,
       referenceFiles: [],
       guideFinished: false,
+      isActive: true,
       guideSteps: [
         { target: 'sdd-template', text: '① 选择模板：点击切换内置模板（标准版/精简版/微服务版/功能细化版），也可从 .docx/.md 文件导入生成自定义模板。点击「编辑章节」可增删章节、调整顺序、切换类型（文本/表格/架构图/图片），点击📝可编辑各章节的 AI Prompt' },
         { target: 'sdd-project-dir', text: '② 添加项目代码目录（支持多目录），然后点击「扫描代码库」分析项目架构、模块关系、数据库结构和 API 接口，作为 AI 生成设计文档的上下文', doneWhen: 'hasProject' },
@@ -281,6 +283,13 @@ export default {
   },
   watch: {
     'guide.enabled'(val) { if (val) this.guideFinished = false },
+  },
+  activated() {
+    this.isActive = true
+    this.reloadConfigs()
+  },
+  deactivated() {
+    this.isActive = false
   },
   methods: {
     // ===== 项目目录管理 =====
@@ -384,7 +393,11 @@ export default {
         this.showToast('请先在「AI 设置」标签页配置模型', 'warning')
         return
       }
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId) || this.providerConfigs[0]
+      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (!provider) {
+        this.showToast('请先选择 AI 厂商和模型', 'warning')
+        return
+      }
       const config = getResolvedConfig(provider, this.selectedModelId)
       if (!config || !config.model) {
         this.showToast('请选择模型', 'warning')
@@ -478,6 +491,19 @@ export default {
       const now = new Date()
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
       window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level } }))
+    },
+    async reloadConfigs() {
+      this.providerConfigs = await loadProviderConfigs()
+      if (this.providerConfigs.length > 0) {
+        // 如果当前选中的厂商仍然存在，保持选择
+        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+        if (!found) {
+          const { providerId, modelId } = await loadActiveSelection()
+          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
+          this.selectedProviderId = target.id
+          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
+        }
+      }
     },
   },
 }

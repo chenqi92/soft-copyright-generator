@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="enabled && currentStep" class="guide-tour">
+    <div v-if="active && enabled && currentStep" class="guide-tour">
       <div
         class="guide-highlight"
         :style="highlightStyle"
@@ -30,6 +30,7 @@ export default {
   props: {
     steps: { type: Array, required: true },
     enabled: { type: Boolean, default: true },
+    active: { type: Boolean, default: true },
     // 外部传入条件 map，用于自动推进步骤
     conditions: { type: Object, default: () => ({}) },
   },
@@ -53,8 +54,16 @@ export default {
       if (val) {
         this.currentIndex = 0
         this.autoAdvance()
-        this.startTracking()
+        if (this.active) this.startTracking()
       } else {
+        this.stopTracking()
+      }
+    },
+    active(val) {
+      if (val && this.enabled) {
+        this.autoAdvance()
+        this.startTracking()
+      } else if (!val) {
         this.stopTracking()
       }
     },
@@ -75,7 +84,7 @@ export default {
   },
   mounted() {
     this.autoAdvance()
-    if (this.enabled) this.startTracking()
+    if (this.enabled && this.active) this.startTracking()
   },
   beforeUnmount() {
     this.stopTracking()

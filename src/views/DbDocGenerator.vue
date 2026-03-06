@@ -3,6 +3,7 @@
     <GuideTour
       :steps="guideSteps"
       :enabled="guideVisible"
+      :active="isActive"
       :conditions="guideConditions"
       @finish="guideFinished = true"
     />
@@ -512,6 +513,7 @@ export default {
       selectedProviderId: null,
       selectedModelId: null,
       guideFinished: false,
+      isActive: true,
       guideSteps: [
         { target: 'db-test', text: '填写连接信息后，点击测试连接获取数据库列表', doneWhen: 'hasConnected' },
         { target: 'db-fetch', text: '选择数据库后点击获取表结构', doneWhen: 'hasSchema' },
@@ -625,6 +627,13 @@ export default {
         this.$nextTick(() => this.renderErDiagram())
       }
     },
+  },
+  activated() {
+    this.isActive = true
+    this.reloadConfigs()
+  },
+  deactivated() {
+    this.isActive = false
   },
   methods: {
     // ===== 数据库类型切换 =====
@@ -1204,7 +1213,11 @@ export default {
         return
       }
 
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId) || this.providerConfigs[0]
+      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (!provider) {
+        this.showToast('请先选择 AI 厂商和模型', 'warning')
+        return
+      }
       const config = getResolvedConfig(provider, this.selectedModelId)
       if (!config || !config.model) {
         this.showToast('请选择模型', 'warning')
@@ -1249,6 +1262,18 @@ export default {
       this.aiProcessing = false
       this.aiProgressText = ''
       this.aiController = null
+    },
+    async reloadConfigs() {
+      this.providerConfigs = await loadProviderConfigs()
+      if (this.providerConfigs.length > 0) {
+        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+        if (!found) {
+          const { providerId, modelId } = await loadActiveSelection()
+          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
+          this.selectedProviderId = target.id
+          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
+        }
+      }
     },
   },
 }

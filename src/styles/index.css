@@ -2258,30 +2258,7 @@ select.form-input {
     gap: 8px;
 }
 
-.chat-think-toggle {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: background 0.15s;
-}
 
-.chat-think-toggle:hover {
-    background: var(--bg-tertiary);
-}
-
-.chat-think-toggle input {
-    display: none;
-}
-
-.chat-think-toggle:has(input:checked) {
-    color: var(--primary-400);
-    background: rgba(99, 102, 241, 0.1);
-}
 
 .chat-clear-btn {
     background: transparent;

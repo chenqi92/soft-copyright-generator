@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    soft_copyright_generator_lib::run()
+    deliver_helper_lib::run()
 }

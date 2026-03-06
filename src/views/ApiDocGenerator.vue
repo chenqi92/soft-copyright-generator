@@ -3,6 +3,7 @@
     <GuideTour
       :steps="guideSteps"
       :enabled="guideVisible"
+      :active="isActive"
       :conditions="guideConditions"
       @finish="guideFinished = true"
     />
@@ -452,6 +453,7 @@ export default {
       selectedProviderId: null,
       selectedModelId: null,
       guideFinished: false,
+      isActive: true,
       guideSteps: [
         { target: 'api-select-dir', text: '选择 Spring Boot 项目的根目录', doneWhen: 'hasProject' },
         { target: 'api-start-parse', text: '点击开始解析接口文档', doneWhen: 'hasParsed' },
@@ -556,6 +558,13 @@ export default {
   },
   watch: {
     'guide.enabled'(val) { if (val) this.guideFinished = false },
+  },
+  activated() {
+    this.isActive = true
+    this.reloadConfigs()
+  },
+  deactivated() {
+    this.isActive = false
   },
   methods: {
     // ===== 项目选择 =====
@@ -814,7 +823,11 @@ export default {
         return
       }
 
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId) || this.providerConfigs[0]
+      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      if (!provider) {
+        this.showToast('请先选择 AI 厂商和模型', 'warning')
+        return
+      }
       const config = getResolvedConfig(provider, this.selectedModelId)
       if (!config || !config.model) {
         this.showToast('请选择模型', 'warning')
@@ -856,6 +869,18 @@ export default {
       this.aiProcessing = false
       this.aiProgressText = ''
       this.aiController = null
+    },
+    async reloadConfigs() {
+      this.providerConfigs = await loadProviderConfigs()
+      if (this.providerConfigs.length > 0) {
+        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+        if (!found) {
+          const { providerId, modelId } = await loadActiveSelection()
+          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
+          this.selectedProviderId = target.id
+          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
+        }
+      }
     },
   },
 }

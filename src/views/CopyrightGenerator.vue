@@ -3,6 +3,7 @@
     <GuideTour
       :steps="guideSteps"
       :enabled="guideVisible"
+      :active="isActive"
       :conditions="guideConditions"
       @finish="guideFinished = true"
     />
@@ -347,6 +348,7 @@ export default {
       dirResults: [],
       currentSeed: null,
       guideFinished: false,
+      isActive: true,
       guideSteps: [
         { target: 'add-dir', text: '点击此处添加源代码目录，支持添加多个目录', doneWhen: 'hasDir' },
         { target: 'detect-types', text: '添加目录后，点击检测文件类型（会自动选中代码文件）', doneWhen: 'hasTypes' },
@@ -396,6 +398,12 @@ export default {
   },
   watch: {
     'guide.enabled'(val) { if (val) this.guideFinished = false },
+  },
+  activated() {
+    this.isActive = true
+  },
+  deactivated() {
+    this.isActive = false
   },
   methods: {
     closeFontDropdown() {

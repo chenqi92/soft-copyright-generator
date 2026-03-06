@@ -66,10 +66,6 @@
           <select class="chat-model-select" v-model="selectedModelId" :title="selectedModelId || '选择模型'">
             <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.id }}</option>
           </select>
-          <label class="chat-think-toggle" title="思考模式">
-            <input type="checkbox" v-model="thinkingMode" />
-            <Brain :size="12" />
-          </label>
         </div>
         <!-- 图片预览条 -->
         <div v-if="chatImages.length > 0" class="chat-image-preview-bar">
@@ -141,7 +137,6 @@ export default {
       chatMessages: [],
       chatInput: '',
       chatLoading: false,
-      thinkingMode: false,
       chatImages: [],   // base64 data URLs for pending images
     }
   },
@@ -175,6 +170,10 @@ export default {
       const m = this.currentProviderModels.find(m => m.id === this.selectedModelId)
       return m?.capabilities?.multimodal || false
     },
+    currentModelDeepThinking() {
+      const m = this.currentProviderModels.find(m => m.id === this.selectedModelId)
+      return m?.capabilities?.deepThinking || false
+    },
   },
   methods: {
     toggleTab(tab) {
@@ -185,6 +184,7 @@ export default {
       const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (p && p.models.length > 0) {
         this.selectedModelId = p.activeModelId || p.models[0].id
+        // watch 会自动处理 thinkingMode
       }
     },
     async loadConfigs() {
@@ -342,8 +342,16 @@ export default {
         stream: false, // 显式禁用流式，Ollama 中避免意外超时
       }
 
-      // 本地 Ollama 视觉模型不支持 response_format 等额外参数
-      if (this.thinkingMode && (providerId === 'deepseek' || model.includes('deepseek'))) reqBody.enable_thinking = true
+      // 思考模式：对所有支持的模型自动生效
+      if (this.currentModelDeepThinking) {
+        // OpenAI o 系列使用 reasoning_effort
+        if (providerId === 'openai' && (model.startsWith('o') || model.includes('/o'))) {
+          reqBody.reasoning_effort = 'high'
+        } else {
+          // DeepSeek / Qwen / 智谱 / 豆包 / SiliconFlow / OpenRouter 等兼容 enable_thinking
+          reqBody.enable_thinking = true
+        }
+      }
 
       const result = await invoke('llm_request', { req: { url: `${base}/chat/completions`, apiKey, body: JSON.stringify(reqBody), isGemini } })
 
