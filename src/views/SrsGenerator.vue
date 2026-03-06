@@ -241,12 +241,12 @@ export default {
       referenceFiles: [],
       guideFinished: false,
       guideSteps: [
-        { target: 'srs-template', text: '选择文档模板：可切换内置模板或加载自定义模板，点击「编辑模板」可增删改章节、调整顺序和类型（文本/表格/图表/图片）' },
-        { target: 'srs-project-dir', text: '添加项目目录：可添加多个代码库目录，添加后点击「扫描代码库」让系统自动识别项目结构', doneWhen: 'hasProject' },
-        { target: 'srs-ref-files', text: '导入参考文件：支持 Word/Excel/PDF/Markdown 等文档，内容会自动提取并作为 AI 生成的上下文参考' },
-        { target: 'srs-chapters', text: '章节控制：勾选/取消章节控制哪些内容需要 AI 生成，类型标记（图/表）表示该节的内容形式' },
-        { target: 'srs-ai-gen', text: '点击 AI 生成自动填充所有已勾选章节，可随时暂停/取消。生成失败的章节会显示重试按钮', doneWhen: 'hasScanned' },
-        { target: 'srs-export', text: '导出 Word 文档：生成完成后可导出为标准 .docx 文件，导出前可在右侧预览区编辑内容' },
+        { target: 'srs-template', text: '① 选择模板：点击切换内置模板（标准版/精简版/企业版/政企版），也可从 .docx/.md 文件导入生成自定义模板。点击「编辑章节」可增删章节、调整顺序、切换类型（文本/表格/图表/图片），点击📝可编辑各章节的 AI Prompt' },
+        { target: 'srs-project-dir', text: '② 添加项目代码目录（支持多目录），然后点击「扫描代码库」让系统自动识别项目架构、模块划分和技术栈，作为 AI 生成文档的上下文', doneWhen: 'hasProject' },
+        { target: 'srs-ref-files', text: '③ 导入参考文件（可选）：支持 Word/Excel/PDF/Markdown 等文档，内容会被提取并注入 AI 生成的上下文，帮助生成更贴合实际的内容' },
+        { target: 'srs-chapters', text: '④ 章节控制：勾选/取消控制哪些章节需要生成。标签「图」表示该节会生成 Mermaid 架构图；「表」表示生成表格。部分模板支持三级标题（如遵循标准规范下的子章节）' },
+        { target: 'srs-ai-gen', text: '⑤ 点击 AI 生成自动填充所有已勾选章节，支持暂停/继续/取消。生成失败的章节会在右侧显示红色❌和重试按钮，可单独重新生成', doneWhen: 'hasScanned' },
+        { target: 'srs-export', text: '⑥ 导出 Word 文档：生成完成后可在右侧预览区直接编辑内容（点击章节标题展开/折叠），编辑满意后点击此处导出为 .docx 文件' },
       ],
     }
   },

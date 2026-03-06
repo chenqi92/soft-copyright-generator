@@ -4,27 +4,45 @@
       <h3><Layout :size="14" /> 模板选择</h3>
     </div>
     <div class="card-body">
-      <!-- 预设模板选择 -->
-      <div class="template-grid">
-        <div
-          v-for="preset in allPresets"
-          :key="preset.id"
-          class="template-card"
-          :class="{ active: currentPresetId === preset.id, custom: preset.isCustom }"
-          @click="selectPreset(preset)"
-        >
-          <div class="template-card-name">{{ preset.name }}</div>
-          <div class="template-card-desc">{{ preset.description || '自定义模板' }}</div>
-          <button
-            v-if="preset.isCustom"
-            class="btn btn-danger btn-sm btn-icon template-delete-btn"
-            @click.stop="deletePreset(preset)"
-            title="删除"
+      <!-- 预设模板选择（水平滚动） -->
+      <div class="template-scroll-wrap">
+        <button v-show="canScrollLeft" class="template-scroll-btn template-scroll-left" @click="scrollTemplates(-1)">
+          <ChevronLeft :size="14" />
+        </button>
+        <div class="template-grid" ref="templateGridRef" @scroll="onTemplateScroll">
+          <!-- 上传卡片（最左侧） -->
+          <div class="template-card template-upload-card" @click="uploadTemplate" :class="{ 'uploading': uploading }">
+            <div v-if="!uploading" class="template-upload-icon">
+              <Upload :size="16" />
+            </div>
+            <div v-if="!uploading" class="template-card-name">从文档导入</div>
+            <div v-if="!uploading" class="template-card-desc">.docx / .md</div>
+            <div v-if="uploading" class="template-card-name" style="text-align:center;">解析中...</div>
+          </div>
+          <div
+            v-for="preset in allPresets"
+            :key="preset.id"
+            class="template-card"
+            :class="{ active: currentPresetId === preset.id, custom: preset.isCustom }"
+            @click="selectPreset(preset)"
           >
-            <Trash2 :size="10" />
-          </button>
+            <div class="template-card-name">{{ preset.name }}</div>
+            <div class="template-card-desc">{{ preset.description || '自定义模板' }}</div>
+            <button
+              v-if="preset.isCustom"
+              class="btn btn-danger btn-sm btn-icon template-delete-btn"
+              @click.stop="deletePreset(preset)"
+              title="删除"
+            >
+              <Trash2 :size="10" />
+            </button>
+          </div>
         </div>
+        <button v-show="canScrollRight" class="template-scroll-btn template-scroll-right" @click="scrollTemplates(1)">
+          <ChevronRight :size="14" />
+        </button>
       </div>
+      <div v-if="allPresets.length > 3" class="template-scroll-hint">← 左右滑动查看更多模板 →</div>
 
       <!-- 操作按钮 -->
       <div style="display:flex;gap:4px;margin-top:8px;">
@@ -136,14 +154,16 @@
 </template>
 
 <script>
-import { Layout, Save, Edit, Trash2, X } from 'lucide-vue-next'
+import { Layout, Save, Edit, Trash2, X, ChevronLeft, ChevronRight, Upload } from 'lucide-vue-next'
 import { getSrsPresets, getSddPresets, instantiateTemplate, toTemplateSkeleton, createSectionNode } from '../core/doc-template/template-presets.js'
 import { loadCustomTemplates, saveCustomTemplate, deleteCustomTemplate } from '../core/doc-template/template-store.js'
 import { renumberSections } from '../core/doc-template/srs-template.js'
+import { generateTemplateFromFile } from '../core/doc-template/template-from-doc.js'
+import { open } from '@tauri-apps/plugin-dialog'
 
 export default {
   name: 'TemplateSelector',
-  components: { Layout, Save, Edit, Trash2, X },
+  components: { Layout, Save, Edit, Trash2, X, ChevronLeft, ChevronRight, Upload },
   inject: ['showToast'],
   props: {
     docType: { type: String, required: true }, // 'srs' | 'sdd'
@@ -159,7 +179,13 @@ export default {
       showSaveDialog: false,
       saveName: '',
       saveDesc: '',
+      canScrollLeft: false,
+      canScrollRight: false,
+      uploading: false,
     }
+  },
+  mounted() {
+    this.$nextTick(() => this.checkScrollState())
   },
   computed: {
     builtinPresets() {
@@ -179,6 +205,46 @@ export default {
     }
   },
   methods: {
+    async uploadTemplate() {
+      if (this.uploading) return
+      try {
+        const filePath = await open({
+          title: '选择文档以生成模板',
+          filters: [
+            { name: '支持的文档', extensions: ['docx', 'md'] },
+            { name: 'Word 文档', extensions: ['docx'] },
+            { name: 'Markdown', extensions: ['md'] },
+          ],
+          multiple: false,
+        })
+        if (!filePath) return
+
+        this.uploading = true
+        const { name, sections } = await generateTemplateFromFile(filePath)
+
+        // 自动保存为自定义模板
+        const tpl = await saveCustomTemplate(this.docType, {
+          name: `导入: ${name}`,
+          description: `从 ${filePath.split(/[/\\]/).pop()} 导入的模板结构`,
+          sections: toTemplateSkeleton(sections),
+        })
+
+        this.customTemplates = await loadCustomTemplates(this.docType)
+        this.currentPresetId = tpl.id
+
+        // 直接切换到该模板
+        this.$emit('switch-template', sections)
+        this.showToast(`已从文档导入 ${sections.length} 个章节`, 'success')
+
+        // 更新滚动状态
+        this.$nextTick(() => this.checkScrollState())
+      } catch (e) {
+        this.showToast(`导入失败: ${e.message || e}`, 'error')
+      } finally {
+        this.uploading = false
+      }
+    },
+
     selectPreset(preset) {
       this.currentPresetId = preset.id
       const sections = instantiateTemplate(preset)
@@ -245,31 +311,113 @@ export default {
     editPrompt(sec) {
       this.editingPromptSection = sec
     },
+    // ===== 滚动控制 =====
+    scrollTemplates(dir) {
+      const el = this.$refs.templateGridRef
+      if (!el) return
+      el.scrollBy({ left: dir * 160, behavior: 'smooth' })
+    },
+    onTemplateScroll() {
+      this.checkScrollState()
+    },
+    checkScrollState() {
+      const el = this.$refs.templateGridRef
+      if (!el) return
+      this.canScrollLeft = el.scrollLeft > 4
+      this.canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 4
+    },
   },
 }
 </script>
 
 <style scoped>
+/* 水平滚动容器 */
+.template-scroll-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.template-scroll-btn {
+  position: absolute;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-elevated, var(--bg-primary));
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  transition: all 0.15s;
+}
+.template-scroll-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--primary-400);
+  border-color: var(--primary-400);
+}
+.template-scroll-left { left: -4px; }
+.template-scroll-right { right: -4px; }
+.template-scroll-hint {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  opacity: 0.7;
+}
 .template-grid {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px 0;
+  flex: 1;
+}
+.template-grid::-webkit-scrollbar {
+  display: none;
 }
 .template-card {
   position: relative;
-  flex: 1;
-  min-width: 80px;
-  max-width: 120px;
+  flex: 0 0 auto;
+  width: 120px;
   padding: 6px 8px;
   border: 1px solid var(--border-primary);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
   background: var(--bg-primary);
+  scroll-snap-align: start;
 }
 .template-card:hover {
   border-color: var(--primary-400);
   background: var(--bg-secondary);
+}
+.template-upload-card {
+  border-style: dashed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 90px;
+  width: 90px;
+}
+.template-upload-card:hover {
+  border-color: var(--primary-500);
+  background: var(--primary-50, #eff6ff);
+}
+.template-upload-card.uploading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+.template-upload-icon {
+  color: var(--primary-400);
+  margin-bottom: 2px;
 }
 .template-card.active {
   border-color: var(--primary-500);

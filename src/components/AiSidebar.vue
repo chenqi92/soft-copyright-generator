@@ -244,13 +244,31 @@ export default {
       }
     },
     readFileAsDataUrl(file) {
-      const reader = new FileReader()
-      reader.onload = () => {
+      // 压缩图片：限制最大尺寸 1024px，JPEG quality 0.7
+      // 避免大图 base64 过大导致本地模型 OOM/503
+      const maxDim = 1024
+      const quality = 0.7
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        let w = img.width, h = img.height
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim }
+          else { w = Math.round(w * maxDim / h); h = maxDim }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, w, h)
+        const dataUrl = canvas.toDataURL('image/jpeg', quality)
         if (this.chatImages.length < 5) {
-          this.chatImages.push(reader.result)
+          this.chatImages.push(dataUrl)
         }
       }
-      reader.readAsDataURL(file)
+      img.onerror = () => URL.revokeObjectURL(url)
+      img.src = url
     },
     previewImage(src) {
       window.open(src, '_blank')
@@ -311,10 +329,39 @@ export default {
       const { baseUrl, apiKey, model, providerId } = config
       const base = baseUrl.replace(/\/+$/, '')
       const isGemini = providerId === 'gemini' || base.includes('generativelanguage.googleapis.com')
-      const reqBody = { model, messages, temperature: 0.7, max_tokens: 8192 }
+      const isLocal = providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'vllm'
+
+      // 检测是否包含图片消息
+      const hasImages = messages.some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'image_url'))
+
+      const reqBody = {
+        model,
+        messages,
+        temperature: 0.7,
+        max_tokens: hasImages ? 4096 : 8192,
+        stream: false, // 显式禁用流式，Ollama 中避免意外超时
+      }
+
+      // 本地 Ollama 视觉模型不支持 response_format 等额外参数
       if (this.thinkingMode && (providerId === 'deepseek' || model.includes('deepseek'))) reqBody.enable_thinking = true
+
       const result = await invoke('llm_request', { req: { url: `${base}/chat/completions`, apiKey, body: JSON.stringify(reqBody), isGemini } })
-      if (!result.success) throw new Error(result.error || `API 错误 (${result.status})`)
+
+      if (!result.success) {
+        // 解析 Ollama 的详细错误信息
+        let errMsg = `API 错误 (${result.status})`
+        if (result.error) {
+          // 尝试解析 JSON 错误体
+          try {
+            const errBody = JSON.parse(result.error.replace(/^HTTP \d+: /, ''))
+            errMsg = errBody.error?.message || errBody.error || errMsg
+          } catch {
+            errMsg = result.error
+          }
+        }
+        if (result.status === 503) errMsg += '\n\n💡 503 通常表示模型正在加载或显存不足。请等待模型加载完成，或尝试使用更小的图片/更简短的提示。'
+        throw new Error(errMsg)
+      }
       if (!result.body || !result.body.trim()) throw new Error('返回空响应')
       const data = JSON.parse(result.body)
       if (!data.choices || data.choices.length === 0) throw new Error('返回空结果')

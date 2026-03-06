@@ -160,9 +160,24 @@
                     </td>
                     <td>{{ formatCtx(m.contextLength) }}</td>
                     <td>
-                      <button class="ai-cfg-act-btn ai-cfg-del" @click="removeModel(idx)" title="移除">
-                        <X :size="12" />
-                      </button>
+                      <div style="display:flex;gap:2px;align-items:center;">
+                        <button
+                          class="ai-cfg-act-btn"
+                          :class="{ 'ai-cfg-ok': m._testOk === true, 'ai-cfg-fail': m._testOk === false }"
+                          @click="testSingleModel(idx)"
+                          :disabled="m._testing"
+                          :title="m._testOk === true ? '测试成功' : m._testOk === false ? '测试失败: ' + (m._testMsg || '') : '测试连接'"
+                        >
+                          <Wifi v-if="!m._testing" :size="12" />
+                          <span v-else style="font-size:10px;">...</span>
+                        </button>
+                        <button class="ai-cfg-act-btn" @click="editModel(idx)" title="编辑">
+                          <Edit3 :size="12" />
+                        </button>
+                        <button class="ai-cfg-act-btn ai-cfg-del" @click="removeModel(idx)" title="移除">
+                          <X :size="12" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   <tr v-if="form.models.length === 0">
@@ -218,6 +233,44 @@
           </div>
         </div>
 
+          <!-- 编辑模型弹窗 -->
+          <div v-if="editingModelIdx !== null" class="ai-modal-mask" @click.self="editingModelIdx = null">
+            <div class="ai-modal">
+              <div class="ai-modal-header">
+                <span>编辑模型：{{ editModelForm.id }}</span>
+                <button class="ai-cfg-act-btn" @click="editingModelIdx = null"><X :size="14" /></button>
+              </div>
+              <div class="ai-modal-body">
+                <div class="form-group">
+                  <label class="form-label">显示名称</label>
+                  <input type="text" class="form-input" v-model="editModelForm.label" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">能力标签</label>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.multimodal" /> 多模态</label>
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.deepThinking" /> 深度思考</label>
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.codeGen" /> 代码生成</label>
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.webSearch" /> 联网搜索</label>
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.functionCall" /> 函数调用</label>
+                    <label class="cap-check"><input type="checkbox" v-model="editModelForm.longContext" /> 长文本</label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">上下文长度 (K)</label>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="number" class="form-input" style="flex:1;" v-model.number="editModelForm.contextLengthK" />
+                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">= {{ (editModelForm.contextLengthK || 0) * 1024 }} tokens</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ai-modal-footer">
+                <button class="btn btn-secondary btn-sm" @click="editingModelIdx = null">取消</button>
+                <button class="btn btn-primary btn-sm" @click="saveEditModel">保存</button>
+              </div>
+            </div>
+          </div>
+
         <!-- 未选择任何配置时的空状态 -->
         <div v-else class="ai-edit-area ai-empty-state">
           <Bot :size="48" style="color:var(--text-muted);" />
@@ -231,7 +284,7 @@
 <script>
 import {
   Bot, Settings, Check, Eye, EyeOff, Wifi, Save,
-  Plus, Trash2, X, Layers, Search, Lightbulb
+  Plus, Trash2, X, Layers, Search, Lightbulb, Edit3
 } from 'lucide-vue-next'
 import {
   LLM_PROVIDERS, loadProviderConfigs, upsertProviderConfig,
@@ -241,7 +294,7 @@ import {
 
 export default {
   name: 'AiSettings',
-  components: { Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Plus, Trash2, X, Layers, Search, Lightbulb },
+  components: { Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Plus, Trash2, X, Layers, Search, Lightbulb, Edit3 },
   inject: ['showToast'],
   data() {
     return {
@@ -257,6 +310,8 @@ export default {
       saved: false,
       showAddModel: false,
       newModel: { id: '', label: '', multimodal: false, deepThinking: false, codeGen: false, webSearch: false, functionCall: false, longContext: false, contextLengthK: 32 },
+      editingModelIdx: null,
+      editModelForm: { id: '', label: '', multimodal: false, deepThinking: false, codeGen: false, webSearch: false, functionCall: false, longContext: false, contextLengthK: 32 },
     }
   },
   computed: {
@@ -350,6 +405,57 @@ export default {
       })
       this.newModel = { id: '', label: '', multimodal: false, deepThinking: false, codeGen: false, webSearch: false, functionCall: false, longContext: false, contextLengthK: 32 }
       this.showAddModel = false
+    },
+
+    editModel(idx) {
+      const m = this.form.models[idx]
+      this.editingModelIdx = idx
+      this.editModelForm = {
+        id: m.id,
+        label: m.label || m.id,
+        multimodal: !!m.capabilities?.multimodal,
+        deepThinking: !!m.capabilities?.deepThinking,
+        codeGen: !!m.capabilities?.codeGen,
+        webSearch: !!m.capabilities?.webSearch,
+        functionCall: !!m.capabilities?.functionCall,
+        longContext: !!m.capabilities?.longContext,
+        contextLengthK: Math.round((m.contextLength || 32768) / 1024),
+      }
+    },
+    saveEditModel() {
+      const idx = this.editingModelIdx
+      if (idx === null || idx < 0 || idx >= this.form.models.length) return
+      const f = this.editModelForm
+      this.form.models[idx] = {
+        ...this.form.models[idx],
+        label: f.label || f.id,
+        capabilities: {
+          multimodal: f.multimodal,
+          deepThinking: f.deepThinking,
+          codeGen: f.codeGen,
+          webSearch: f.webSearch,
+          functionCall: f.functionCall,
+          longContext: f.longContext,
+        },
+        contextLength: (f.contextLengthK || 32) * 1024,
+      }
+      this.editingModelIdx = null
+    },
+
+    async testSingleModel(idx) {
+      const m = this.form.models[idx]
+      if (!m || m._testing) return
+      // Vue 2/3 reactivity: use $set or spread to add reactive properties
+      this.form.models.splice(idx, 1, { ...m, _testing: true, _testOk: null, _testMsg: '' })
+      try {
+        const config = getResolvedConfig(this.form, m.id)
+        const result = await testLlmConnection(config)
+        const updated = { ...this.form.models[idx], _testing: false, _testOk: result.success, _testMsg: result.message || '' }
+        this.form.models.splice(idx, 1, updated)
+      } catch (e) {
+        const updated = { ...this.form.models[idx], _testing: false, _testOk: false, _testMsg: String(e) }
+        this.form.models.splice(idx, 1, updated)
+      }
     },
 
     async doTest() {
@@ -534,6 +640,16 @@ export default {
 }
 .ai-cfg-del:hover {
   color: var(--danger-500);
+}
+.ai-cfg-ok {
+  color: #22c55e !important;
+}
+.ai-cfg-fail {
+  color: var(--danger-500) !important;
+}
+.ai-cfg-act-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ai-empty-hint {

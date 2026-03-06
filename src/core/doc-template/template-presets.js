@@ -172,6 +172,88 @@ export function getSrsPresets() {
                 },
             ],
         },
+        {
+            id: 'srs-gov',
+            name: '政企交付版',
+            description: '参照政企项目实际交付标准，含用户角色、遵循标准规范、功能架构图、非功能需求细分和验收标准',
+            sections: [
+                {
+                    id: 'srs-g-1', number: '1', title: '引言', type: 'text', prompt: '',
+                    children: [
+                        { id: 'srs-g-1-1', number: '1.1', title: '目的', type: 'text', prompt: '请编写本需求规格说明书的编写目的。\n要求：\n1. 详细说明文档在项目各阶段的作用（需求确认、概要设计指导、开发参考、测试依据、实施辅助、验收依据）\n2. 明确读者对象\n3. 300-500字', children: [] },
+                        { id: 'srs-g-1-2', number: '1.2', title: '适用范围', type: 'text', prompt: '请描述本文档的适用范围。\n1. 适用的系统和版本\n2. 适用的组织和人员\n3. 100-200字', children: [] },
+                        { id: 'srs-g-1-3', number: '1.3', title: '术语和缩略语', type: 'table', prompt: '请列出项目中的术语和缩略语，Markdown 表格格式，列：术语/缩略语、全称、说明，至少 10 条。', children: [] },
+                        { id: 'srs-g-1-4', number: '1.4', title: '参考资料', type: 'text', prompt: '请列出参考资料，编号列表格式，包括国家标准、行业规范和技术文档。', children: [] },
+                        { id: 'srs-g-1-5', number: '1.5', title: '需求描述约定', type: 'text', prompt: '请描述本文档的需求描述约定。\n要求：\n1. 需求编号规则说明\n2. 优先级定义（高/中/低）\n3. 需求状态定义（草案/已确认/已变更等）\n4. 100-200字', children: [] },
+                    ],
+                },
+                {
+                    id: 'srs-g-2', number: '2', title: '项目概述', type: 'text', prompt: '',
+                    children: [
+                        { id: 'srs-g-2-1', number: '2.1', title: '项目背景', type: 'text', prompt: '请描述项目的建设背景和需求来源。\n1. 项目来源和立项背景\n2. 行业/业务背景\n3. 当前痛点和建设必要性\n4. 300-500字', children: [] },
+                        { id: 'srs-g-2-2', number: '2.2', title: '项目目标', type: 'text', prompt: '请描述项目建设目标。\n1. 总体目标\n2. 分项目标（3-5 个）\n3. 预期效果\n4. 300-500字', children: [] },
+                        { id: 'srs-g-2-3', number: '2.3', title: '用户角色', type: 'table', prompt: '请根据项目代码中的权限/角色定义，列出系统的用户角色。\nMarkdown 表格格式，列：角色名称、角色描述、主要权限、用户数量估算。\n至少 3-5 个角色。', children: [] },
+                        {
+                            id: 'srs-g-2-4', number: '2.4', title: '遵循标准与规范', type: 'text', prompt: '',
+                            children: [
+                                { id: 'srs-g-2-4-1', number: '2.4.1', title: '国家法律法规', type: 'text', prompt: '请列出系统需遵循的国家法律法规，编号列表格式。', children: [] },
+                                { id: 'srs-g-2-4-2', number: '2.4.2', title: '行业标准', type: 'text', prompt: '请列出系统需遵循的行业标准（如 GB/T 等），编号列表格式。', children: [] },
+                                { id: 'srs-g-2-4-3', number: '2.4.3', title: '安全与隐私规范', type: 'text', prompt: '请列出安全和隐私保护相关规范（等保、数据安全法等）。', children: [] },
+                                { id: 'srs-g-2-4-4', number: '2.4.4', title: '管理体系认证', type: 'text', prompt: '请列出涉及的管理体系认证标准（ISO 等）。', children: [] },
+                            ],
+                        },
+                        {
+                            id: 'srs-g-2-5', number: '2.5', title: '功能总体设计', type: 'text', prompt: '',
+                            children: [
+                                { id: 'srs-g-2-5-1', number: '2.5.1', title: '功能架构图', type: 'diagram', prompt: '请根据代码目录结构和模块划分，生成系统功能架构的 Mermaid 图（graph TD），展示各功能模块的层级关系，仅输出 Mermaid 代码。', children: [] },
+                                { id: 'srs-g-2-5-2', number: '2.5.2', title: '功能列表', type: 'table', prompt: '请根据代码中的 Controller/Router/Handler，列出系统的完整功能列表。\nMarkdown 表格格式，列：功能编号、功能模块、功能名称、功能描述、优先级。', children: [] },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    id: 'srs-g-3', number: '3', title: '功能性需求', type: 'text', prompt: '',
+                    children: [
+                        { id: 'srs-g-3-0', number: '3.0', title: '功能需求概述', type: 'text', prompt: '请根据代码结构概述系统的功能需求分类和组织方式，说明功能编号规则，100-200字。', children: [] },
+                        { id: 'srs-g-3-1', number: '3.1', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第一个核心业务模块，详细描述该模块的功能需求。\n要求：\n1. 模块名称和编号\n2. 模块概述（50-100字）\n3. 子功能需求列表，每个子功能含：功能编号、名称、详细描述（含输入/处理/输出）、优先级\n4. 业务规则和约束条件', children: [] },
+                        { id: 'srs-g-3-2', number: '3.2', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第二个核心业务模块，详细描述其功能需求（格式同上）。', children: [] },
+                        { id: 'srs-g-3-3', number: '3.3', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第三个核心业务模块，详细描述其功能需求（格式同上）。', children: [] },
+                        { id: 'srs-g-3-n', number: '3.N', title: '系统管理模块', type: 'text', prompt: '请描述系统管理模块的功能需求，含用户管理、角色管理、权限管理、菜单管理、日志管理等，按功能编号格式组织。', children: [] },
+                    ],
+                },
+                {
+                    id: 'srs-g-4', number: '4', title: '非功能性需求', type: 'text', prompt: '',
+                    children: [
+                        {
+                            id: 'srs-g-4-1', number: '4.1', title: '质量需求', type: 'text', prompt: '',
+                            children: [
+                                { id: 'srs-g-4-1-1', number: '4.1.1', title: '可用性', type: 'text', prompt: '请描述系统可用性需求（输入校验、操作反馈、错误提示、用户引导等），200-300字。', children: [] },
+                                { id: 'srs-g-4-1-2', number: '4.1.2', title: '可靠性和健壮性', type: 'text', prompt: '请描述系统可靠性需求。\n1. 可靠性量化指标（可用性 99.x%、故障容忍、缺陷密度）\n2. 健壮性设计要求（操作容错、持续运行保障）\n3. 300-500字', children: [] },
+                                { id: 'srs-g-4-1-3', number: '4.1.3', title: '可维护性', type: 'text', prompt: '请描述系统可维护性需求（标准化架构、模块化设计、日志规范、运维工具等），200-300字。', children: [] },
+                                { id: 'srs-g-4-1-4', number: '4.1.4', title: '安全性', type: 'text', prompt: '请描述系统安全性需求（身份认证、访问控制、数据加密、防攻击、审计日志等），300-500字。', children: [] },
+                            ],
+                        },
+                        { id: 'srs-g-4-2', number: '4.2', title: '约束条件', type: 'text', prompt: '请根据项目类型描述系统的约束条件（兼容硬件设备型号、第三方系统集成限制、技术栈约束等），200-400字。', children: [] },
+                        { id: 'srs-g-4-3', number: '4.3', title: '接口需求', type: 'text', prompt: '请描述系统的外部接口需求（第三方 API 集成、数据交换接口、硬件接口等），列出每个接口的名称、方向、协议、数据格式。', children: [] },
+                        {
+                            id: 'srs-g-4-4', number: '4.4', title: '技术需求', type: 'text', prompt: '',
+                            children: [
+                                { id: 'srs-g-4-4-1', number: '4.4.1', title: '软硬件环境需求', type: 'table', prompt: '请描述系统运行的软硬件环境需求。\nMarkdown 表格格式，分类列出：服务器配置（CPU/内存/存储/网络）、软件环境（OS/中间件/数据库/运行时）、客户端要求。', children: [] },
+                                { id: 'srs-g-4-4-2', number: '4.4.2', title: '运行保障需求', type: 'text', prompt: '请描述系统运行保障需求。\n1. 硬件保障要求（故障响应、容量规划）\n2. 软件保障要求（问题响应时效、维护要求）\n3. 运维支撑要求（监控、备份）\n4. 300-500字', children: [] },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    id: 'srs-g-5', number: '5', title: '验收标准', type: 'text', prompt: '',
+                    children: [
+                        { id: 'srs-g-5-1', number: '5.1', title: '功能验收标准', type: 'table', prompt: '请根据功能需求编写功能验收标准。\nMarkdown 表格，列：序号、验收项、验收标准、验证方式、通过条件。', children: [] },
+                        { id: 'srs-g-5-2', number: '5.2', title: '性能验收标准', type: 'table', prompt: '请编写性能验收标准。\nMarkdown 表格，列：序号、指标名称、期望值、测试方法、通过条件。', children: [] },
+                        { id: 'srs-g-5-3', number: '5.3', title: '交付物清单', type: 'table', prompt: '请列出项目交付物清单。\nMarkdown 表格，列：序号、交付物名称、交付形式、数量、备注。', children: [] },
+                    ],
+                },
+            ],
+        },
     ]
 }
 
@@ -311,6 +393,82 @@ export function getSddPresets() {
                     children: [
                         { id: 'sdd-m-6-1', number: '6.1', title: '容器化部署', type: 'diagram', prompt: '请生成容器化部署架构的 Mermaid 图，展示 Docker/K8s 部署拓扑，仅输出 Mermaid 代码。', children: [] },
                         { id: 'sdd-m-6-2', number: '6.2', title: 'CI/CD 流程', type: 'text', prompt: '请描述 CI/CD 持续集成和部署流程，200-400字。', children: [] },
+                    ],
+                },
+            ],
+        },
+        {
+            id: 'sdd-functional',
+            name: '功能细化版',
+            description: '参照政企项目交付标准，第 4 章按功能编号体系深层嵌套模块设计，含标准规范、接口规范、数据架构和可靠性章节',
+            sections: [
+                {
+                    id: 'sdd-f-1', number: '1', title: '引言', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-1-1', number: '1.1', title: '目的', type: 'text', prompt: '请编写本软件设计文档的编写目的。\n要求：\n1. 说明文档在项目中的定位\n2. 明确文档的预期读者（开发团队、项目管理者、测试人员、甲方验收人员）\n3. 200-400字', children: [] },
+                        { id: 'sdd-f-1-2', number: '1.2', title: '范围', type: 'text', prompt: '请描述本文档涵盖的系统范围和边界，200-300字。', children: [] },
+                        { id: 'sdd-f-1-3', number: '1.3', title: '读者对象', type: 'text', prompt: '请列出本文档的目标读者及各自关注点，以列表格式输出。', children: [] },
+                        { id: 'sdd-f-1-4', number: '1.4', title: '术语与缩略语', type: 'table', prompt: '请列出项目中使用的术语和缩略语，Markdown 表格格式，列：术语/缩略语、全称、说明，至少 10 条。', children: [] },
+                        { id: 'sdd-f-1-5', number: '1.5', title: '参考资料', type: 'text', prompt: '请列出相关参考资料，编号列表格式，包括国家标准、行业规范和框架文档。', children: [] },
+                    ],
+                },
+                {
+                    id: 'sdd-f-2', number: '2', title: '系统概述', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-2-1', number: '2.1', title: '系统简介', type: 'text', prompt: '请描述系统的总体定位和核心功能概述，200-400字。', children: [] },
+                        { id: 'sdd-f-2-2', number: '2.2', title: '项目目标', type: 'text', prompt: '请描述系统建设的总体目标和 3-5 个分阶段目标，300-500字。', children: [] },
+                        { id: 'sdd-f-2-3', number: '2.3', title: '架构原则', type: 'text', prompt: '请总结系统设计遵循的 5-8 条架构原则（如高内聚低耦合、可扩展性等），结合实际技术框架说明。', children: [] },
+                        {
+                            id: 'sdd-f-2-4', number: '2.4', title: '遵循标准与规范', type: 'text', prompt: '',
+                            children: [
+                                { id: 'sdd-f-2-4-1', number: '2.4.1', title: '国家法律法规', type: 'text', prompt: '请列出系统需遵循的国家法律法规，编号列表格式。', children: [] },
+                                { id: 'sdd-f-2-4-2', number: '2.4.2', title: '行业标准', type: 'text', prompt: '请列出系统需遵循的行业标准（如 GB/T、IEEE 等），编号列表格式。', children: [] },
+                                { id: 'sdd-f-2-4-3', number: '2.4.3', title: '安全与隐私规范', type: 'text', prompt: '请列出系统需遵循的安全和隐私保护规范（等保、GDPR 等）。', children: [] },
+                                { id: 'sdd-f-2-4-4', number: '2.4.4', title: '质量认证标准', type: 'text', prompt: '请列出系统可能涉及的质量认证标准（ISO 9001、CMMI 等）。', children: [] },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    id: 'sdd-f-3', number: '3', title: '系统架构', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-3-1', number: '3.1', title: '总体架构图', type: 'diagram', prompt: '请根据代码结构生成系统总体架构 Mermaid 图（graph TD），展示分层关系，仅输出 Mermaid 代码。', children: [] },
+                        { id: 'sdd-f-3-1d', number: '3.1.1', title: '架构说明', type: 'text', prompt: '请为架构图编写文字说明，描述各层职责、技术选型和数据流向，300-500字。', children: [] },
+                        { id: 'sdd-f-3-2', number: '3.2', title: '技术选型', type: 'table', prompt: '请以 Markdown 表格列出技术栈，列：类别、技术、版本、用途说明。', children: [] },
+                    ],
+                },
+                {
+                    id: 'sdd-f-4', number: '4', title: '模块细化设计', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-4-0', number: '4.0', title: '模块设计说明', type: 'text', prompt: '请根据代码结构分析系统的所有功能模块，以表格列出：模块编号、模块名称、核心职责描述，并说明编号规则。', children: [] },
+                        { id: 'sdd-f-4-1', number: '4.1', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第一个核心业务模块编写设计说明。\n要求：\n1. 模块名称和功能编号\n2. 模块职责描述（100-200字）\n3. 子功能列表（含功能编号、名称、说明）\n4. 核心类/组件列表\n5. 模块依赖关系', children: [] },
+                        { id: 'sdd-f-4-2', number: '4.2', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第二个核心业务模块编写设计说明（格式同上）。', children: [] },
+                        { id: 'sdd-f-4-3', number: '4.3', title: '（由 AI 根据代码生成模块名）', type: 'text', prompt: '请根据代码中的第三个核心业务模块编写设计说明（格式同上）。', children: [] },
+                        { id: 'sdd-f-4-n', number: '4.N', title: '系统管理模块', type: 'text', prompt: '请编写系统管理模块设计说明，含用户管理、角色管理、菜单管理、部门管理、字典管理等子模块，按功能编号格式组织。', children: [] },
+                    ],
+                },
+                {
+                    id: 'sdd-f-5', number: '5', title: '接口设计规范', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-5-1', number: '5.1', title: '设计原则', type: 'text', prompt: '请描述 API 接口设计原则（RESTful、幂等性、版本管理、错误码规范等），300-500字。', children: [] },
+                        { id: 'sdd-f-5-2', number: '5.2', title: '统一响应格式', type: 'text', prompt: '请描述统一响应格式规范，给出成功和错误响应的 JSON 示例，说明状态码规则。', children: [] },
+                        { id: 'sdd-f-5-3', number: '5.3', title: '核心接口示例', type: 'table', prompt: '请列出 5-10 个核心接口示例，Markdown 表格，列：路径、方法、描述、请求参数、响应说明。', children: [] },
+                    ],
+                },
+                {
+                    id: 'sdd-f-6', number: '6', title: '数据架构设计', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-6-1', number: '6.1', title: '数据流设计', type: 'diagram', prompt: '请生成数据流向 Mermaid 图（flowchart），展示数据从输入到存储的流转，仅输出 Mermaid 代码。', children: [] },
+                        { id: 'sdd-f-6-2', number: '6.2', title: '数据库设计原则', type: 'text', prompt: '请描述数据库设计原则和规范（命名规范、索引策略、分表策略、备份方案等），300-500字。', children: [] },
+                        { id: 'sdd-f-6-3', number: '6.3', title: '核心表结构', type: 'text', prompt: '请列出核心表结构设计，每张表含：表名、用途、主要字段列表（含类型和说明）。', children: [] },
+                        { id: 'sdd-f-6-4', number: '6.4', title: 'ER 图', type: 'diagram', prompt: '请生成 ER 图（erDiagram 语法），仅输出 Mermaid 代码。', children: [] },
+                    ],
+                },
+                {
+                    id: 'sdd-f-7', number: '7', title: '系统性能与可靠性', type: 'text', prompt: '',
+                    children: [
+                        { id: 'sdd-f-7-1', number: '7.1', title: '性能指标', type: 'table', prompt: '请编写性能指标表格，列：指标名称、期望值、测试方法，含响应时间、并发、吞吐量、可用性等。', children: [] },
+                        { id: 'sdd-f-7-2', number: '7.2', title: '可靠性设计', type: 'text', prompt: '请描述可靠性设计方案（容错、故障恢复、数据备份、监控告警、高可用架构），300-500字。', children: [] },
                     ],
                 },
             ],

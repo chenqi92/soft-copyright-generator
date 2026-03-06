@@ -1,25 +1,27 @@
 <template>
-  <div v-if="enabled && currentStep" class="guide-tour">
-    <div
-      class="guide-highlight"
-      :style="highlightStyle"
-    ></div>
-    <div
-      class="guide-tooltip"
-      :style="tooltipStyle"
-      :class="tooltipPlacement"
-    >
-      <div class="guide-tooltip-content">
-        <span class="guide-step-badge">{{ currentIndex + 1 }}/{{ steps.length }}</span>
-        {{ currentStep.text }}
-      </div>
-      <div class="guide-tooltip-actions">
-        <button v-if="currentIndex > 0" class="guide-btn" @click="prev">上一步</button>
-        <button v-if="currentIndex < steps.length - 1" class="guide-btn guide-btn-primary" @click="next">下一步</button>
-        <button v-else class="guide-btn guide-btn-primary" @click="finish">完成</button>
+  <Teleport to="body">
+    <div v-if="enabled && currentStep" class="guide-tour">
+      <div
+        class="guide-highlight"
+        :style="highlightStyle"
+      ></div>
+      <div
+        class="guide-tooltip"
+        :style="tooltipStyle"
+        :class="tooltipPlacement"
+      >
+        <div class="guide-tooltip-content">
+          <span class="guide-step-badge">{{ currentIndex + 1 }}/{{ steps.length }}</span>
+          {{ currentStep.text }}
+        </div>
+        <div class="guide-tooltip-actions">
+          <button v-if="currentIndex > 0" class="guide-btn" @click="prev">上一步</button>
+          <button v-if="currentIndex < steps.length - 1" class="guide-btn guide-btn-primary" @click="next">下一步</button>
+          <button v-else class="guide-btn guide-btn-primary" @click="finish">完成</button>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script>
@@ -124,52 +126,58 @@ export default {
         return
       }
 
-      const rect = el.getBoundingClientRect()
-      const pad = 4
+      // 确保目标元素在视口内可见
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
 
-      this.highlightStyle = {
-        display: 'block',
-        top: `${rect.top - pad}px`,
-        left: `${rect.left - pad}px`,
-        width: `${rect.width + pad * 2}px`,
-        height: `${rect.height + pad * 2}px`,
-      }
+      // 等待滚动完成后再计算位置
+      requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect()
+        const pad = 4
 
-      // 决定 tooltip 位置
-      const spaceBelow = window.innerHeight - rect.bottom
-      const spaceRight = window.innerWidth - rect.right
+        this.highlightStyle = {
+          display: 'block',
+          top: `${rect.top - pad}px`,
+          left: `${rect.left - pad}px`,
+          width: `${rect.width + pad * 2}px`,
+          height: `${rect.height + pad * 2}px`,
+        }
 
-      if (spaceBelow > 100) {
-        this.tooltipPlacement = 'guide-tooltip-bottom'
-        this.tooltipStyle = {
-          display: 'block',
-          top: `${rect.bottom + pad + 8}px`,
-          left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
+        // 决定 tooltip 位置
+        const spaceBelow = window.innerHeight - rect.bottom
+        const spaceRight = window.innerWidth - rect.right
+
+        if (spaceBelow > 100) {
+          this.tooltipPlacement = 'guide-tooltip-bottom'
+          this.tooltipStyle = {
+            display: 'block',
+            top: `${rect.bottom + pad + 8}px`,
+            left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
+          }
+        } else if (rect.top > 100) {
+          this.tooltipPlacement = 'guide-tooltip-top'
+          this.tooltipStyle = {
+            display: 'block',
+            top: `${rect.top - pad - 8}px`,
+            left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
+            transform: 'translateY(-100%)',
+          }
+        } else if (spaceRight > 280) {
+          this.tooltipPlacement = 'guide-tooltip-right'
+          this.tooltipStyle = {
+            display: 'block',
+            top: `${rect.top}px`,
+            left: `${rect.right + pad + 8}px`,
+          }
+        } else {
+          this.tooltipPlacement = 'guide-tooltip-left'
+          this.tooltipStyle = {
+            display: 'block',
+            top: `${rect.top}px`,
+            left: `${rect.left - pad - 8}px`,
+            transform: 'translateX(-100%)',
+          }
         }
-      } else if (rect.top > 100) {
-        this.tooltipPlacement = 'guide-tooltip-top'
-        this.tooltipStyle = {
-          display: 'block',
-          top: `${rect.top - pad - 8}px`,
-          left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
-          transform: 'translateY(-100%)',
-        }
-      } else if (spaceRight > 280) {
-        this.tooltipPlacement = 'guide-tooltip-right'
-        this.tooltipStyle = {
-          display: 'block',
-          top: `${rect.top}px`,
-          left: `${rect.right + pad + 8}px`,
-        }
-      } else {
-        this.tooltipPlacement = 'guide-tooltip-left'
-        this.tooltipStyle = {
-          display: 'block',
-          top: `${rect.top}px`,
-          left: `${rect.left - pad - 8}px`,
-          transform: 'translateX(-100%)',
-        }
-      }
+      })
     },
   },
 }
