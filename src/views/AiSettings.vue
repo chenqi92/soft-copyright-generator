@@ -152,7 +152,11 @@
                     <td>
                       <span v-if="m.capabilities?.multimodal" class="cap-tag cap-multimodal">多模态</span>
                       <span v-if="m.capabilities?.deepThinking" class="cap-tag cap-thinking">深度思考</span>
-                      <span v-if="!m.capabilities?.multimodal && !m.capabilities?.deepThinking" class="cap-tag cap-text">文本</span>
+                      <span v-if="m.capabilities?.codeGen" class="cap-tag cap-code">代码</span>
+                      <span v-if="m.capabilities?.webSearch" class="cap-tag cap-search">联网</span>
+                      <span v-if="m.capabilities?.functionCall" class="cap-tag cap-func">函数调用</span>
+                      <span v-if="m.capabilities?.longContext" class="cap-tag cap-long">长文本</span>
+                      <span v-if="!m.capabilities?.multimodal && !m.capabilities?.deepThinking && !m.capabilities?.codeGen && !m.capabilities?.webSearch && !m.capabilities?.functionCall && !m.capabilities?.longContext" class="cap-tag cap-text">文本</span>
                     </td>
                     <td>{{ formatCtx(m.contextLength) }}</td>
                     <td>
@@ -189,14 +193,21 @@
                 </div>
                 <div class="form-group">
                   <label class="form-label">能力标签</label>
-                  <div style="display:flex;gap:12px;">
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <label class="cap-check"><input type="checkbox" v-model="newModel.multimodal" /> 多模态</label>
                     <label class="cap-check"><input type="checkbox" v-model="newModel.deepThinking" /> 深度思考</label>
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.codeGen" /> 代码生成</label>
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.webSearch" /> 联网搜索</label>
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.functionCall" /> 函数调用</label>
+                    <label class="cap-check"><input type="checkbox" v-model="newModel.longContext" /> 长文本</label>
                   </div>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">上下文长度 (tokens)</label>
-                  <input type="number" class="form-input" v-model.number="newModel.contextLength" placeholder="32768" />
+                  <label class="form-label">上下文长度 (K)</label>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="number" class="form-input" style="flex:1;" v-model.number="newModel.contextLengthK" placeholder="32" />
+                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">= {{ (newModel.contextLengthK || 0) * 1024 }} tokens</span>
+                  </div>
                 </div>
               </div>
               <div class="ai-modal-footer">
@@ -245,7 +256,7 @@ export default {
       detectResult: null,
       saved: false,
       showAddModel: false,
-      newModel: { id: '', label: '', multimodal: false, deepThinking: false, contextLength: 32768 },
+      newModel: { id: '', label: '', multimodal: false, deepThinking: false, codeGen: false, webSearch: false, functionCall: false, longContext: false, contextLengthK: 32 },
     }
   },
   computed: {
@@ -329,11 +340,15 @@ export default {
         capabilities: {
           multimodal: this.newModel.multimodal,
           deepThinking: this.newModel.deepThinking,
+          codeGen: this.newModel.codeGen,
+          webSearch: this.newModel.webSearch,
+          functionCall: this.newModel.functionCall,
+          longContext: this.newModel.longContext,
         },
-        contextLength: this.newModel.contextLength || 32768,
+        contextLength: (this.newModel.contextLengthK || 32) * 1024,
         custom: true,
       })
-      this.newModel = { id: '', label: '', multimodal: false, deepThinking: false, contextLength: 32768 }
+      this.newModel = { id: '', label: '', multimodal: false, deepThinking: false, codeGen: false, webSearch: false, functionCall: false, longContext: false, contextLengthK: 32 }
       this.showAddModel = false
     },
 
@@ -593,6 +608,22 @@ export default {
 .cap-text {
   background: var(--bg-secondary);
   color: var(--text-muted);
+}
+.cap-code {
+  background: rgba(16,185,129,0.15);
+  color: #059669;
+}
+.cap-search {
+  background: rgba(59,130,246,0.15);
+  color: #2563eb;
+}
+.cap-func {
+  background: rgba(168,85,247,0.15);
+  color: #7c3aed;
+}
+.cap-long {
+  background: rgba(244,63,94,0.15);
+  color: #e11d48;
 }
 
 .cap-check {

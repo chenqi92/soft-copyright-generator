@@ -99,6 +99,8 @@ export async function fillDocSections(config, sections, contextSummary, docInfo 
         }
 
         const section = sections[i]
+        section.generating = true
+        section.error = null
         onLog(`[进行] [${i + 1}/${sections.length}] ${section.number} ${section.title}`, 'info')
 
         try {
@@ -108,15 +110,21 @@ export async function fillDocSections(config, sections, contextSummary, docInfo 
             const responseText = await callLlm(config, messages, { maxTokens, temperature: 0.4 })
             const success = applyDocSectionResult(responseText, section)
 
+            section.generating = false
             if (success) {
                 generated++
+                section.error = null
                 onLog(`[完成] [${i + 1}/${sections.length}] ${section.number} ${section.title} ✓`, 'success')
             } else {
+                section.error = '生成内容为空，请重试'
                 onLog(`[警告] [${i + 1}/${sections.length}] ${section.number} ${section.title} - 内容为空`, 'warn')
             }
             onSectionDone(section, i, sections.length)
         } catch (e) {
+            section.generating = false
+            section.error = e.message || String(e)
             onLog(`[失败] [${i + 1}/${sections.length}] ${section.number} ${section.title} 失败: ${e.message}`, 'error')
+            onSectionDone(section, i, sections.length)
         }
     }
 

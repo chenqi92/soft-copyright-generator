@@ -26,25 +26,9 @@
       <div v-show="activeTab === 'chat'" class="ai-sidebar-content">
         <div class="ai-sidebar-panel-header">
           <span><MessageCircle :size="14" style="vertical-align:-2px;margin-right:4px;" /> AI 对话</span>
-          <div class="chat-header-actions">
-            <label class="chat-think-toggle" title="思考模式">
-              <input type="checkbox" v-model="thinkingMode" />
-              <Brain :size="12" />
-              <span>思考</span>
-            </label>
-            <button class="chat-clear-btn" @click="chatMessages = []" title="清空对话">
-              <Trash2 :size="12" />
-            </button>
-          </div>
-        </div>
-        <div class="chat-model-bar">
-          <select class="chat-model-select" v-model="selectedProviderId" @change="onProviderSelect" style="flex:1;">
-            <option :value="null" disabled>选择厂商...</option>
-            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
-          </select>
-          <select class="chat-model-select" v-model="selectedModelId" style="flex:1;">
-            <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
-          </select>
+          <button class="chat-clear-btn" @click="chatMessages = []; chatImages = []" title="清空对话">
+            <Trash2 :size="12" />
+          </button>
         </div>
         <div class="chat-messages" ref="chatMessagesRef">
           <div v-if="chatMessages.length === 0" class="chat-empty">
@@ -52,7 +36,13 @@
             <p>选择模型后开始对话</p>
           </div>
           <div v-for="(msg, i) in chatMessages" :key="i" :class="['chat-msg', msg.role]">
-            <div v-if="msg.role === 'user'" class="chat-msg-bubble user">{{ msg.content }}</div>
+            <div v-if="msg.role === 'user'" class="chat-msg-bubble user">
+              <!-- 用户图片 -->
+              <div v-if="msg.images && msg.images.length" class="chat-user-images">
+                <img v-for="(img, j) in msg.images" :key="j" :src="img" class="chat-user-img" @click="previewImage(img)" />
+              </div>
+              {{ msg.content }}
+            </div>
             <div v-else class="chat-msg-bubble assistant">
               <details v-if="msg.thinking" class="chat-thinking-block">
                 <summary><Brain :size="12" /> 思考过程</summary>
@@ -67,16 +57,44 @@
             </div>
           </div>
         </div>
+        <!-- 模型选择 + 思考模式（同一行） -->
+        <div class="chat-model-bar">
+          <select class="chat-model-select" v-model="selectedProviderId" @change="onProviderSelect" title="选择厂商">
+            <option :value="null" disabled>厂商...</option>
+            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+          </select>
+          <select class="chat-model-select" v-model="selectedModelId" :title="selectedModelId || '选择模型'">
+            <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.id }}</option>
+          </select>
+          <label class="chat-think-toggle" title="思考模式">
+            <input type="checkbox" v-model="thinkingMode" />
+            <Brain :size="12" />
+          </label>
+        </div>
+        <!-- 图片预览条 -->
+        <div v-if="chatImages.length > 0" class="chat-image-preview-bar">
+          <div v-for="(img, i) in chatImages" :key="i" class="chat-image-thumb-wrap">
+            <img :src="img" class="chat-image-thumb" />
+            <button class="chat-image-remove" @click="chatImages.splice(i, 1)" title="移除">
+              <X :size="10" />
+            </button>
+          </div>
+        </div>
         <div class="chat-input-area">
+          <button class="chat-attach-btn" @click="pickImage" :disabled="chatLoading" title="添加图片">
+            <ImagePlus :size="16" />
+          </button>
           <textarea ref="chatInputRef" class="chat-input" v-model="chatInput"
             placeholder="输入消息... (Enter 发送)" rows="1"
             @keydown="onChatKeydown" @input="autoResizeChat" :disabled="chatLoading"
+            @paste="onPaste"
           ></textarea>
           <button class="chat-send-btn" @click="sendChat"
-            :disabled="!chatInput.trim() || chatLoading || !selectedProviderId || !selectedModelId" title="发送">
+            :disabled="(!chatInput.trim() && chatImages.length === 0) || chatLoading || !selectedProviderId || !selectedModelId" title="发送">
             <Send :size="16" />
           </button>
         </div>
+        <input type="file" ref="imageInputRef" accept="image/*" multiple style="display:none;" @change="onImageSelected" />
       </div>
     </div>
 
@@ -103,7 +121,7 @@
 </template>
 
 <script>
-import { ClipboardList, MessageCircle, Bot, Send, Brain, Trash2 } from 'lucide-vue-next'
+import { ClipboardList, MessageCircle, Bot, Send, Brain, Trash2, ImagePlus, X } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
 import { loadProviderConfigs, loadActiveSelection, getResolvedConfig } from '../core/llm/llm-service.js'
 import { marked } from 'marked'
@@ -112,7 +130,7 @@ marked.setOptions({ breaks: true, gfm: true })
 
 export default {
   name: 'AiSidebar',
-  components: { ClipboardList, MessageCircle, Bot, Send, Brain, Trash2 },
+  components: { ClipboardList, MessageCircle, Bot, Send, Brain, Trash2, ImagePlus, X },
   data() {
     return {
       activeTab: null,
@@ -124,6 +142,7 @@ export default {
       chatInput: '',
       chatLoading: false,
       thinkingMode: false,
+      chatImages: [],   // base64 data URLs for pending images
     }
   },
   mounted() {
@@ -151,6 +170,10 @@ export default {
     currentProviderModels() {
       const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
       return p ? p.models : []
+    },
+    currentModelMultimodal() {
+      const m = this.currentProviderModels.find(m => m.id === this.selectedModelId)
+      return m?.capabilities?.multimodal || false
     },
   },
   methods: {
@@ -196,19 +219,59 @@ export default {
     scrollChatBottom() {
       this.$nextTick(() => { const el = this.$refs.chatMessagesRef; if (el) el.scrollTop = el.scrollHeight })
     },
+
+    // ========= 图片相关 =========
+    pickImage() {
+      this.$refs.imageInputRef?.click()
+    },
+    onImageSelected(e) {
+      const files = Array.from(e.target.files || [])
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue
+        this.readFileAsDataUrl(file)
+      }
+      e.target.value = ''
+    },
+    onPaste(e) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (file) this.readFileAsDataUrl(file)
+        }
+      }
+    },
+    readFileAsDataUrl(file) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (this.chatImages.length < 5) {
+          this.chatImages.push(reader.result)
+        }
+      }
+      reader.readAsDataURL(file)
+    },
+    previewImage(src) {
+      window.open(src, '_blank')
+    },
+
+    // ========= 发送消息 =========
     async sendChat() {
       const text = this.chatInput.trim()
-      if (!text || this.chatLoading || !this.selectedProviderId || !this.selectedModelId) return
+      const images = [...this.chatImages]
+      if ((!text && images.length === 0) || this.chatLoading || !this.selectedProviderId || !this.selectedModelId) return
       const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (!provider) return
       const config = getResolvedConfig(provider, this.selectedModelId)
-      this.chatMessages.push({ role: 'user', content: text })
+      this.chatMessages.push({ role: 'user', content: text, images: images.length > 0 ? images : undefined })
       this.chatInput = ''
+      this.chatImages = []
       this.$nextTick(() => { if (this.$refs.chatInputRef) this.$refs.chatInputRef.style.height = 'auto' })
       this.scrollChatBottom()
       this.chatLoading = true
       try {
-        const msgs = this.chatMessages.filter(m => m.role === 'user' || m.role === 'assistant').map(m => ({ role: m.role, content: m.content }))
+        const msgs = this.buildApiMessages()
         const result = await this.callChatLlm(config, msgs)
         this.chatMessages.push({ role: 'assistant', content: result.content || '', thinking: result.thinking || null })
       } catch (err) {
@@ -218,6 +281,32 @@ export default {
         this.scrollChatBottom()
       }
     },
+
+    buildApiMessages() {
+      return this.chatMessages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => {
+          if (m.role === 'user' && m.images && m.images.length > 0) {
+            // 多模态格式
+            const content = []
+            for (const img of m.images) {
+              const match = img.match(/^data:(image\/\w+);base64,(.+)$/)
+              if (match) {
+                content.push({
+                  type: 'image_url',
+                  image_url: { url: img }
+                })
+              }
+            }
+            if (m.content) {
+              content.push({ type: 'text', text: m.content })
+            }
+            return { role: 'user', content }
+          }
+          return { role: m.role, content: m.content }
+        })
+    },
+
     async callChatLlm(config, messages) {
       const { baseUrl, apiKey, model, providerId } = config
       const base = baseUrl.replace(/\/+$/, '')
@@ -235,3 +324,93 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+/* 图片预览条 */
+.chat-image-preview-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+}
+.chat-image-thumb-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+.chat-image-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-image-remove {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--danger-500);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.chat-image-thumb-wrap:hover .chat-image-remove {
+  opacity: 1;
+}
+
+/* 附件按钮 */
+.chat-attach-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.chat-attach-btn:hover:not(:disabled) {
+  border-color: var(--primary-400);
+  color: var(--primary-400);
+}
+.chat-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 用户消息中的图片 */
+.chat-user-images {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.chat-user-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: transform 0.15s;
+}
+.chat-user-img:hover {
+  transform: scale(1.05);
+}
+</style>

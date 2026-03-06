@@ -77,8 +77,8 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
-              name: `软著代码生成器 ${tag}`,
-              body: `## 软著代码生成器 ${tag}\n\n### 下载说明\n- **Windows**: 下载 \`.exe\` 安装包\n- **macOS (Apple Silicon)**: 下载 \`aarch64.dmg\`\n- **macOS (Intel)**: 下载 \`x64.dmg\``,
+              name: `交付助手 ${tag}`,
+              body: `## 交付助手 ${tag}\n\n### 下载说明\n- **Windows**: 下载 \`.exe\` 安装包\n- **macOS (Apple Silicon)**: 下载 \`aarch64.dmg\`\n- **macOS (Intel)**: 下载 \`x64.dmg\``,
               draft: true,
               prerelease: false,
             });
@@ -162,7 +162,7 @@ jobs:
               release_id: releaseId,
             });
 
-            let body = `## 软著代码生成器 ${{ needs.create-release.outputs.release_id && github.ref_name || '' }}\n\n`;
+            let body = `## 交付助手 ${{ needs.create-release.outputs.release_id && github.ref_name || '' }}\n\n`;
             body += `### 下载说明\n`;
             body += `- **Windows**: 下载 \`.exe\` 安装包\n`;
             body += `- **macOS (Apple Silicon)**: 下载 \`aarch64.dmg\`\n`;

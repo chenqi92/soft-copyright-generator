@@ -1,5 +1,11 @@
 <template>
   <div style="display:flex;flex-direction:column;height:100%;">
+    <GuideTour
+      :steps="guideSteps"
+      :enabled="guideVisible"
+      :conditions="guideConditions"
+      @finish="guideFinished = true"
+    />
     <!-- 头部操作栏 -->
     <div class="view-header">
       <div class="header-actions">
@@ -10,7 +16,7 @@
           <Check :size="12" /> {{ scanResult.stats.totalFiles }} 个文件，{{ scanResult.modules.length }} 个模块
         </span>
 
-        <div class="ai-fill-group" v-if="scanResult">
+        <div class="ai-fill-group" v-if="scanResult" data-guide="srs-ai-gen">
           <button v-if="!aiProcessing" class="btn btn-primary btn-sm" @click="startAiGenerate">
             <Bot :size="14" /> AI 生成
           </button>
@@ -32,7 +38,7 @@
           </select>
         </div>
 
-        <button class="btn btn-primary btn-sm" @click="exportWord" :disabled="!scanResult">
+        <button class="btn btn-primary btn-sm" @click="exportWord" :disabled="!scanResult" data-guide="srs-export">
           <FileDown :size="14" /> 导出 Word
         </button>
       </div>
@@ -44,13 +50,14 @@
       <aside class="config-panel">
         <!-- 模板选择 -->
         <TemplateSelector
+          data-guide="srs-template"
           :doc-type="'srs'"
           :sections="sections"
           @switch-template="onSwitchTemplate"
           @update-sections="onUpdateSections"
         />
         <!-- 项目目录 -->
-        <div class="card">
+        <div class="card" data-guide="srs-project-dir">
           <div class="card-header">
             <h3><FolderOpen :size="14" /> 项目目录</h3>
           </div>
@@ -77,7 +84,7 @@
         </div>
 
         <!-- 参考文件 -->
-        <ReferenceFiles @update-files="onUpdateReferenceFiles" />
+        <ReferenceFiles data-guide="srs-ref-files" @update-files="onUpdateReferenceFiles" />
 
         <!-- 文档信息 -->
         <div class="card">
@@ -105,7 +112,7 @@
         </div>
 
         <!-- 章节控制 -->
-        <div class="card">
+        <div class="card" data-guide="srs-chapters">
           <div class="card-header">
             <h3><Settings :size="14" /> 章节控制</h3>
             <div style="display:flex;gap:4px;">
@@ -201,12 +208,13 @@ import { loadProviderConfigs, loadActiveSelection, getResolvedConfig, callLlm } 
 import SectionEditor from '../components/SectionEditor.vue'
 import TemplateSelector from '../components/TemplateSelector.vue'
 import ReferenceFiles from '../components/ReferenceFiles.vue'
+import GuideTour from '../components/GuideTour.vue'
 
 export default {
   name: 'SrsGenerator',
   components: {
     FolderOpen, Search, X, Check, FileDown, FileText, Settings, ChevronRight, Bot,
-    SectionEditor, TemplateSelector, ReferenceFiles,
+    SectionEditor, TemplateSelector, ReferenceFiles, GuideTour,
   },
   inject: ['showToast'],
   data() {
@@ -231,6 +239,15 @@ export default {
       selectedProviderId: null,
       selectedModelId: null,
       referenceFiles: [],
+      guideFinished: false,
+      guideSteps: [
+        { target: 'srs-template', text: '选择文档模板：可切换内置模板或加载自定义模板，点击「编辑模板」可增删改章节、调整顺序和类型（文本/表格/图表/图片）' },
+        { target: 'srs-project-dir', text: '添加项目目录：可添加多个代码库目录，添加后点击「扫描代码库」让系统自动识别项目结构', doneWhen: 'hasProject' },
+        { target: 'srs-ref-files', text: '导入参考文件：支持 Word/Excel/PDF/Markdown 等文档，内容会自动提取并作为 AI 生成的上下文参考' },
+        { target: 'srs-chapters', text: '章节控制：勾选/取消章节控制哪些内容需要 AI 生成，类型标记（图/表）表示该节的内容形式' },
+        { target: 'srs-ai-gen', text: '点击 AI 生成自动填充所有已勾选章节，可随时暂停/取消。生成失败的章节会显示重试按钮', doneWhen: 'hasScanned' },
+        { target: 'srs-export', text: '导出 Word 文档：生成完成后可导出为标准 .docx 文件，导出前可在右侧预览区编辑内容' },
+      ],
     }
   },
   async created() {
@@ -256,6 +273,19 @@ export default {
     sectionStats() {
       return countSections(this.sections)
     },
+    guideVisible() {
+      if (this.guideFinished) return false
+      return !!this.guide?.enabled
+    },
+    guideConditions() {
+      return {
+        hasProject: this.projectDirs.length > 0,
+        hasScanned: !!this.scanResult,
+      }
+    },
+  },
+  watch: {
+    'guide.enabled'(val) { if (val) this.guideFinished = false },
   },
   methods: {
     // ===== 项目目录管理 =====
@@ -415,6 +445,9 @@ export default {
       if (!section || !this.scanResult) return
 
       this.aiProcessing = true
+      section.generating = true
+      section.error = null
+      this.sections = [...this.sections]
       this.aiProgressText = `生成 ${section.number} ${section.title}...`
       this.addLog(`[进行] 单独生成: ${section.number} ${section.title}`)
       try {
@@ -423,10 +456,15 @@ export default {
         const maxTokens = section.type === 'diagram' ? 4096 : 8192
         const responseText = await callLlm(config, messages, { maxTokens, temperature: 0.4 })
         applyDocSectionResult(responseText, section)
+        section.generating = false
+        section.error = null
         this.sections = [...this.sections]
         this.addLog(`[完成] ${section.number} ${section.title} ✓`, 'success')
         this.showToast(`${section.number} ${section.title} 生成完成`, 'success')
       } catch (e) {
+        section.generating = false
+        section.error = e.message || String(e)
+        this.sections = [...this.sections]
         this.addLog(`[失败] ${section.number} ${section.title}: ${e.message}`, 'error')
         this.showToast('生成失败: ' + String(e), 'error')
       }
