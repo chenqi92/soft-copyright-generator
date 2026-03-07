@@ -32,7 +32,7 @@
           </template>
           <select class="ai-model-select" v-model="selectedProviderId" @change="onProviderSelect" :disabled="aiProcessing">
             <option :value="null" disabled>选择厂商...</option>
-            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+            <option v-for="p in globalStore.providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
           </select>
           <select class="ai-model-select" v-model="selectedModelId" :disabled="aiProcessing">
             <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
@@ -81,6 +81,13 @@
             >
               <Search :size="14" /> {{ scanning ? '扫描中...' : '扫描代码库' }}
             </button>
+            <!-- 最近目录 -->
+            <div v-if="recentProjects.length > 0 && projectDirs.length === 0" class="recent-dirs">
+              <span class="recent-dirs-label">最近使用</span>
+              <button v-for="rp in recentProjects" :key="rp" class="recent-dir-item" @click="addRecentDir(rp)" :title="rp">
+                {{ rp.split('/').pop() || rp }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -206,6 +213,7 @@ import { scanCodebase, buildContextSummary } from '../core/doc-template/codebase
 import { renderDocSections } from '../core/doc-template/doc-docx-renderer.js'
 import { fillDocSections, buildDocSectionPrompt, applyDocSectionResult, createAiController } from '../core/doc-template/doc-llm-service.js'
 import { loadProviderConfigs, loadActiveSelection, getResolvedConfig, callLlm } from '../core/llm/llm-service.js'
+import { saveRecentProject, getRecentProjects, savePageConfig, loadPageConfig, getSetting, setSetting } from '../core/db.js'
 import SectionEditor from '../components/SectionEditor.vue'
 import TemplateSelector from '../components/TemplateSelector.vue'
 import ReferenceFiles from '../components/ReferenceFiles.vue'
@@ -217,10 +225,11 @@ export default {
     FolderOpen, Search, X, Check, FileDown, FileText, Settings, ChevronRight, Bot, BookOpen,
     SectionEditor, TemplateSelector, ReferenceFiles, GuideTour,
   },
-  inject: ['showToast', 'guide'],
+  inject: ['showToast', 'guide', 'globalStore'],
   data() {
     return {
       projectDirs: [],
+      recentProjects: [],
       scanning: false,
       scanResult: null,
       sections: createSddTemplate(),
@@ -236,7 +245,6 @@ export default {
       aiProcessing: false,
       aiProgressText: '',
       aiController: null,
-      providerConfigs: [],
       selectedProviderId: null,
       selectedModelId: null,
       referenceFiles: [],
@@ -256,18 +264,25 @@ export default {
     if (this.sections.length > 0) {
       this.expandedSections = new Set(this.sections.map(s => s.id))
     }
-    this.providerConfigs = await loadProviderConfigs()
-    if (this.providerConfigs.length > 0) {
-      const { providerId, modelId } = await loadActiveSelection()
-      const found = this.providerConfigs.find(p => p.id === providerId)
-      const target = found || this.providerConfigs[0]
-      this.selectedProviderId = target.id
-      this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-    }
+    // 初始化选择状态（从全局 store 读取）
+    this.syncSelectionFromStore()
+    this.loadRecentProjects()
+    // 加载保存的文档信息
+    loadPageConfig('sdd-doc-info').then(saved => {
+      if (saved) Object.assign(this.docInfo, saved)
+    }).catch(() => {})
+    getSetting('guide-finished-sdd', false).then(v => { if (v) this.guideFinished = true }).catch(() => {})
+  },
+  watch: {
+    docInfo: {
+      deep: true,
+      handler(val) { savePageConfig('sdd-doc-info', val).catch(() => {}) }
+    },
+    guideFinished(val) { if (val) setSetting('guide-finished-sdd', true).catch(() => {}) },
   },
   computed: {
     currentProviderModels() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       return p ? p.models : []
     },
     guideVisible() {
@@ -286,7 +301,7 @@ export default {
   },
   activated() {
     this.isActive = true
-    this.reloadConfigs()
+    this.syncSelectionFromStore()
   },
   deactivated() {
     this.isActive = false
@@ -301,6 +316,7 @@ export default {
         return
       }
       this.projectDirs.push(dir)
+      saveRecentProject(dir, 'sdd').catch(() => {})
     },
     removeDir(idx) {
       this.projectDirs.splice(idx, 1)
@@ -383,17 +399,16 @@ export default {
 
     // ===== AI 生成 =====
     onProviderSelect() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (p && p.models.length > 0) this.selectedModelId = p.activeModelId || p.models[0].id
     },
     async startAiGenerate() {
       if (!this.scanResult || this.aiProcessing) return
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length === 0) {
+      if (this.globalStore.providerConfigs.length === 0) {
         this.showToast('请先在「AI 设置」标签页配置模型', 'warning')
         return
       }
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const provider = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (!provider) {
         this.showToast('请先选择 AI 厂商和模型', 'warning')
         return
@@ -429,7 +444,7 @@ export default {
     },
     async generateSingle(sectionId) {
       if (this.aiProcessing) return
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const provider = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (!provider) { this.showToast('请先选择 AI 模型', 'warning'); return }
       const config = getResolvedConfig(provider, this.selectedModelId)
       const section = findSectionById(this.sections, sectionId)
@@ -492,18 +507,21 @@ export default {
       const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`
       window.dispatchEvent(new CustomEvent('ai-log', { detail: { time, msg, level } }))
     },
-    async reloadConfigs() {
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length > 0) {
-        // 如果当前选中的厂商仍然存在，保持选择
-        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
-        if (!found) {
-          const { providerId, modelId } = await loadActiveSelection()
-          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
-          this.selectedProviderId = target.id
-          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-        }
+    syncSelectionFromStore() {
+      if (this.globalStore.providerConfigs.length > 0 && !this.selectedProviderId) {
+        this.selectedProviderId = this.globalStore.activeProviderId || this.globalStore.providerConfigs[0].id
+        const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
+        this.selectedModelId = this.globalStore.activeModelId || p?.activeModelId || (p?.models[0]?.id || '')
       }
+    },
+    async loadRecentProjects() {
+      try {
+        this.recentProjects = (await getRecentProjects('sdd')).map(r => r.path)
+      } catch { /* ignore */ }
+    },
+    addRecentDir(path) {
+      if (this.projectDirs.includes(path)) return
+      this.projectDirs.push(path)
     },
   },
 }

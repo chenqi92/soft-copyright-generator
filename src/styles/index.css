@@ -493,6 +493,41 @@ select.form-input {
     white-space: nowrap;
 }
 
+.recent-dirs {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.recent-dirs-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-right: 4px;
+}
+
+.recent-dir-item {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-dir-item:hover {
+    border-color: var(--primary-400);
+    color: var(--primary-300);
+    background: rgba(99, 102, 241, 0.06);
+}
+
 .dir-ratio {
     display: flex;
     align-items: center;
@@ -662,6 +697,8 @@ select.form-input {
 
 .code-line {
     display: flex;
+    align-items: baseline;
+    line-height: 1.6;
 }
 
 .line-number {
@@ -671,10 +708,12 @@ select.form-input {
     padding-right: 12px;
     user-select: none;
     flex-shrink: 0;
+    line-height: inherit;
 }
 
 .line-content {
     flex: 1;
+    line-height: inherit;
 }
 
 .app-footer {

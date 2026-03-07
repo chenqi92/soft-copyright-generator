@@ -30,7 +30,7 @@
             <button class="btn btn-danger btn-sm" @click="aiController?.cancel()" title="取消">✕ 取消</button>
           </template>
           <select class="ai-model-select" v-model="selectedProviderId" :disabled="aiProcessing" @change="onProviderSelect">
-            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+            <option v-for="p in globalStore.providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
           </select>
           <select class="ai-model-select" v-model="selectedModelId" :disabled="aiProcessing">
             <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
@@ -73,6 +73,12 @@
             <button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;" @click="selectProject" data-guide="api-select-dir">
               <FolderOpen :size="14" /> {{ projectDir ? '更换目录' : '选择目录' }}
             </button>
+            <div v-if="recentProjects.length > 0 && !projectDir" class="recent-dirs">
+              <span class="recent-dirs-label">最近使用</span>
+              <button v-for="rp in recentProjects" :key="rp" class="recent-dir-item" @click="useRecentDir(rp)" :title="rp">
+                {{ rp.split('/').pop() || rp }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -415,6 +421,7 @@ import { detectProjectLanguage, parseProject } from '../core/api-doc/parser-regi
 import { isPlaceholder } from '../core/api-doc/spring-boot-parser.js'
 import { renderMarkdown, renderDocx, DEFAULT_DOC_MODULES } from '../core/api-doc/api-doc-renderer.js'
 import { loadProviderConfigs, loadActiveSelection, fillApiDocPlaceholders, createAiController, getResolvedConfig } from '../core/llm/llm-service.js'
+import { saveRecentProject, getRecentProjects, getSetting, setSetting } from '../core/db.js'
 import GuideTour from '../components/GuideTour.vue'
 import {
   FolderOpen, Search, X, Lightbulb, Check, FileDown, FileText,
@@ -428,7 +435,7 @@ export default {
     FolderOpen, Search, X, Lightbulb, Check, FileDown, FileText,
     Plug, Filter, Settings, ChevronRight, Scan, Bot
   },
-  inject: ['showToast', 'guide'],
+  inject: ['showToast', 'guide', 'globalStore'],
   data() {
     return {
       projectDir: '',
@@ -449,11 +456,11 @@ export default {
       aiProgressText: '',
       aiLogs: [],
       aiController: null,
-      providerConfigs: [],
       selectedProviderId: null,
       selectedModelId: null,
       guideFinished: false,
       isActive: true,
+      recentProjects: [],
       guideSteps: [
         { target: 'api-select-dir', text: '选择 Spring Boot 项目的根目录', doneWhen: 'hasProject' },
         { target: 'api-start-parse', text: '点击开始解析接口文档', doneWhen: 'hasParsed' },
@@ -461,14 +468,13 @@ export default {
     }
   },
   async created() {
-    this.providerConfigs = await loadProviderConfigs()
-    if (this.providerConfigs.length > 0) {
-      const { providerId, modelId } = await loadActiveSelection()
-      const found = this.providerConfigs.find(p => p.id === providerId)
-      const target = found || this.providerConfigs[0]
-      this.selectedProviderId = target.id
-      this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-    }
+    this.syncSelectionFromStore()
+    this.recentProjects = (await getRecentProjects('api-doc').catch(() => [])).map(r => r.path)
+    const gf = await getSetting('guide-finished-api', false).catch(() => false)
+    if (gf) this.guideFinished = true
+  },
+  watch: {
+    guideFinished(val) { if (val) setSetting('guide-finished-api', true).catch(() => {}) },
   },
   computed: {
     totalApis() {
@@ -476,7 +482,7 @@ export default {
       return this.parseResult.modules.reduce((s, m) => s + m.apis.length, 0)
     },
     currentProviderModels() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       return p ? p.models : []
     },
     filteredModules() {
@@ -561,7 +567,7 @@ export default {
   },
   activated() {
     this.isActive = true
-    this.reloadConfigs()
+    this.syncSelectionFromStore()
   },
   deactivated() {
     this.isActive = false
@@ -572,6 +578,7 @@ export default {
       const dir = await open({ directory: true, multiple: false, title: '选择项目根目录' })
       if (!dir) return
       this.projectDir = dir
+      saveRecentProject(dir, 'api-doc').catch(() => {})
       this.parseResult = null
       this.selectedModules = []
       await this.detectLanguage()
@@ -581,6 +588,12 @@ export default {
       this.detectedLang = null
       this.parseResult = null
       this.selectedModules = []
+    },
+    useRecentDir(path) {
+      this.projectDir = path
+      this.parseResult = null
+      this.selectedModules = []
+      this.detectLanguage()
     },
 
     // ===== 语言检测 =====
@@ -808,7 +821,7 @@ export default {
     },
 
     onProviderSelect() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (p && p.models.length > 0) {
         this.selectedModelId = p.activeModelId || p.models[0].id
       }
@@ -817,13 +830,12 @@ export default {
     async startAiFill() {
       if (!this.parseResult || this.aiProcessing) return
 
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length === 0) {
+      if (this.globalStore.providerConfigs.length === 0) {
         this.showToast('请先在「AI 设置」标签页配置模型', 'warning')
         return
       }
 
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const provider = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (!provider) {
         this.showToast('请先选择 AI 厂商和模型', 'warning')
         return
@@ -870,16 +882,11 @@ export default {
       this.aiProgressText = ''
       this.aiController = null
     },
-    async reloadConfigs() {
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length > 0) {
-        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
-        if (!found) {
-          const { providerId, modelId } = await loadActiveSelection()
-          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
-          this.selectedProviderId = target.id
-          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-        }
+    syncSelectionFromStore() {
+      if (this.globalStore.providerConfigs.length > 0 && !this.selectedProviderId) {
+        this.selectedProviderId = this.globalStore.activeProviderId || this.globalStore.providerConfigs[0].id
+        const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
+        this.selectedModelId = this.globalStore.activeModelId || p?.activeModelId || (p?.models[0]?.id || '')
       }
     },
   },

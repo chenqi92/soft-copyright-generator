@@ -107,7 +107,7 @@ export async function fillDocSections(config, sections, contextSummary, docInfo 
             const messages = buildDocSectionPrompt(section, contextSummary, docInfo)
             // 图表类型使用更大的 maxTokens
             const maxTokens = section.type === 'diagram' ? 4096 : 8192
-            const responseText = await callLlm(config, messages, { maxTokens, temperature: 0.4 })
+            const responseText = await callLlm(config, messages, { maxTokens, temperature: 0.4, signal: controller?.signal })
             const success = applyDocSectionResult(responseText, section)
 
             section.generating = false
@@ -122,6 +122,11 @@ export async function fillDocSections(config, sections, contextSummary, docInfo 
             onSectionDone(section, i, sections.length)
         } catch (e) {
             section.generating = false
+            // AbortError 表示用户主动取消，直接中断循环
+            if (e.name === 'AbortError') {
+                onLog(`[取消] 用户取消了生成`, 'warn')
+                break
+            }
             section.error = e.message || String(e)
             onLog(`[失败] [${i + 1}/${sections.length}] ${section.number} ${section.title} 失败: ${e.message}`, 'error')
             onSectionDone(section, i, sections.length)

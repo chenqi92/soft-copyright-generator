@@ -119,6 +119,7 @@ use crate::db_connector;
 pub struct DbTestResult {
     pub success: bool,
     pub version: Option<String>,
+    pub databases: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -129,18 +130,20 @@ pub struct DbSchemaResult {
     pub error: Option<String>,
 }
 
-/// 测试数据库连接
+/// 测试数据库连接（同时获取数据库列表，一次连接）
 #[tauri::command]
 pub async fn db_test_connection(config: db_connector::DbConfig) -> DbTestResult {
-    match db_connector::test_connection(&config).await {
-        Ok(version) => DbTestResult {
+    match db_connector::test_and_list(&config).await {
+        Ok((version, databases)) => DbTestResult {
             success: true,
             version: Some(version),
+            databases,
             error: None,
         },
         Err(e) => DbTestResult {
             success: false,
             version: None,
+            databases: vec![],
             error: Some(e),
         },
     }

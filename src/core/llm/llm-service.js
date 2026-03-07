@@ -514,10 +514,13 @@ export function generateConfigName(config) {
 /**
  * 调用 LLM chat completions API
  * 通过 Rust 后端 invoke 发起请求，绕过前端 fetch 的 header 限制
+ * @param {object} config - { baseUrl, apiKey, model, providerId }
+ * @param {Array} messages - 消息数组
+ * @param {object} options - { temperature, maxTokens, signal }
  */
 export async function callLlm(config, messages, options = {}) {
     const { baseUrl, apiKey, model, providerId } = config
-    const { temperature = 0.3, maxTokens = 4096 } = options
+    const { temperature = 0.3, maxTokens = 4096, signal } = options
 
     const base = baseUrl.replace(/\/+$/, '')
     const isGemini = providerId === 'gemini' || base.includes('generativelanguage.googleapis.com')
@@ -539,7 +542,7 @@ export async function callLlm(config, messages, options = {}) {
     }
 
     // 通过 Rust 后端发起请求（camelCase 字段名匹配 serde rename_all）
-    const result = await invoke('llm_request', {
+    const invokePromise = invoke('llm_request', {
         req: {
             url,
             apiKey,
@@ -547,6 +550,18 @@ export async function callLlm(config, messages, options = {}) {
             isGemini,
         }
     })
+
+    // 支持取消：使用 Promise.race 与 abort 信号竞争
+    let result
+    if (signal) {
+        const abortPromise = new Promise((_, reject) => {
+            if (signal.aborted) reject(new DOMException('操作已取消', 'AbortError'))
+            signal.addEventListener('abort', () => reject(new DOMException('操作已取消', 'AbortError')), { once: true })
+        })
+        result = await Promise.race([invokePromise, abortPromise])
+    } else {
+        result = await invokePromise
+    }
 
     if (!result.success) {
         throw new Error(result.error || `LLM API 错误 (${result.status})`)
@@ -571,7 +586,7 @@ export async function callLlm(config, messages, options = {}) {
     const msg = data.choices[0].message || {}
     // 部分模型 (Gemini Pro) 可能返回 content 为 null（使用了 thinking/reasoning 模式）
     // 尝试多种字段获取内容
-    const content = msg.content
+    let content = msg.content
         || msg.reasoning_content  // DeepSeek R1 等
         || msg.text               // 某些兼容端点
         || null
@@ -580,6 +595,19 @@ export async function callLlm(config, messages, options = {}) {
         // 最后尝试从原始 body 中提取可用文本
         console.warn('LLM content 为空, 完整响应:', result.body.substring(0, 500))
         throw new Error('LLM 返回了空内容，该模型可能不完全兼容 OpenAI Chat API。建议换用 gemini-2.5-flash')
+    }
+
+    // 当设置了 response_format: json_object 时，模型可能将内容包裹为 {"content": "..."} 的 JSON
+    // 自动检测并提取内部文本
+    if (typeof content === 'string' && content.trimStart().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(content)
+            if (parsed.content && typeof parsed.content === 'string') {
+                content = parsed.content
+            }
+        } catch (_) {
+            // 不是 JSON，保持原样
+        }
     }
 
     return content
@@ -1047,12 +1075,15 @@ const BATCH_SIZE = 50
 
 /**
  * 创建 AI 处理控制器（暂停/继续/取消）
+ * 内含 AbortController，cancel 时同时中断正在进行的 HTTP 请求
  */
 export function createAiController() {
+    const ac = new AbortController()
     let _resolveResume = null
     return {
         paused: false,
         cancelled: false,
+        signal: ac.signal,
         pause() {
             this.paused = true
         },
@@ -1062,6 +1093,7 @@ export function createAiController() {
         },
         cancel() {
             this.cancelled = true
+            ac.abort()
             if (_resolveResume) { _resolveResume(); _resolveResume = null }
         },
         async waitIfPaused() {
@@ -1121,12 +1153,13 @@ export async function fillApiDocPlaceholders(config, parseResult, onLog = () => 
         onLog(`[进行] [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
         try {
             const messages = buildApiDocPrompt(batch.items)
-            const responseText = await callLlm(config, messages, { maxTokens: 4096 })
+            const responseText = await callLlm(config, messages, { maxTokens: 4096, signal: controller?.signal })
             const { filled } = applyApiDocResults(responseText, batch.items)
             totalFilled += filled
             onLog(`[完成] [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
             onBatchDone(batch.name, filled, batch.items.length)
         } catch (e) {
+            if (e.name === 'AbortError') { onLog(`[取消] 用户取消了生成`, 'warn'); break }
             onLog(`[失败] [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
         }
     }
@@ -1152,10 +1185,11 @@ export async function fillApiDocPlaceholders(config, parseResult, onLog = () => 
             onLog(`[进行] 示例值 [${bIdx + 1}/${exBatches.length}] (${batch.length} 个接口)`, 'info')
             try {
                 const messages = buildApiExamplePrompt(batch)
-                const responseText = await callLlm(config, messages, { maxTokens: 8192 })
+                const responseText = await callLlm(config, messages, { maxTokens: 8192, signal: controller?.signal })
                 const { filled: exFilled } = applyApiExampleResults(responseText, batch)
                 onLog(`[完成] 示例值 [${bIdx + 1}/${exBatches.length}] → ${exFilled}/${batch.length} 已填充`, 'success')
             } catch (e) {
+                if (e.name === 'AbortError') { onLog(`[取消] 用户取消了生成`, 'warn'); break }
                 onLog(`[失败] 示例值 [${bIdx + 1}/${exBatches.length}] 失败: ${e.message}`, 'error')
             }
         }
@@ -1189,13 +1223,14 @@ export async function fillDbDocPlaceholders(config, schema, getTableComment, get
         onLog(`[进行] [${bIdx + 1}/${batches.length}] ${batch.name} (${batch.items.length} 项)`, 'info')
         try {
             const messages = buildDbDocPrompt(batch.items)
-            const responseText = await callLlm(config, messages, { maxTokens: 4096 })
+            const responseText = await callLlm(config, messages, { maxTokens: 4096, signal: controller?.signal })
             const { filled, newOverrides } = applyDbDocResults(responseText, batch.items, schema, currentOverrides)
             totalFilled += filled
             currentOverrides = newOverrides
             onLog(`[完成] [${bIdx + 1}/${batches.length}] ${batch.name} → ${filled}/${batch.items.length} 已填充`, 'success')
             onBatchDone(batch.name, filled, batch.items.length)
         } catch (e) {
+            if (e.name === 'AbortError') { onLog(`[取消] 用户取消了生成`, 'warn'); break }
             onLog(`[失败] [${bIdx + 1}/${batches.length}] ${batch.name} 失败: ${e.message}`, 'error')
         }
     }

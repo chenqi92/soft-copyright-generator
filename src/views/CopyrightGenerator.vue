@@ -16,7 +16,7 @@
         <span v-else-if="lastResult" style="font-size:12px;color:var(--success-500);">
           <Check :size="12" /> {{ lastResult.totalPages }}页 {{ fmt(lastResult.totalLines) }}行
         </span>
-        <button class="btn btn-primary btn-sm" @click="generateDocument" :disabled="generating || !lastResult">
+        <button class="btn btn-primary btn-sm" @click="generateDocument" :disabled="generating || (!previewData && !dirResults.length)">
           <FileDown :size="14" /> 生成 Word 文档
         </button>
       </div>
@@ -128,6 +128,12 @@
             <div v-if="config.directories.length === 0" class="tip">
               <Lightbulb :size="14" class="tip-icon" />
               <span>点击"添加目录"选择源代码文件夹，支持多目录。</span>
+            </div>
+            <div v-if="recentProjects.length > 0 && config.directories.length === 0" class="recent-dirs">
+              <span class="recent-dirs-label">最近使用</span>
+              <button v-for="rp in recentProjects" :key="rp" class="recent-dir-item" @click="addRecentDir(rp)" :title="rp">
+                {{ rp.split('/').pop() || rp }}
+              </button>
             </div>
             <div v-for="(dir, i) in config.directories" :key="i" class="dir-item">
               <div class="dir-item-header">
@@ -300,6 +306,7 @@ import {
   Lightbulb, Ban, Eraser, Eye, RefreshCw, Check, FileDown,
   ChevronDown, Shuffle
 } from 'lucide-vue-next'
+import { savePageConfig, loadPageConfig, getSetting, setSetting, saveRecentProject, getRecentProjects } from '../core/db.js'
 
 const NON_CODE_EXTS = ['.json','.yaml','.yml','.toml','.ini','.cfg','.conf','.md','.txt','.csv','.log','.xml','.svg']
 const BATCH_SIZE = 50
@@ -354,6 +361,7 @@ export default {
         { target: 'detect-types', text: '添加目录后，点击检测文件类型（会自动选中代码文件）', doneWhen: 'hasTypes' },
         { target: 'refresh-preview', text: '点击刷新预览查看生成效果，也可先在上方调整文件类型选择', doneWhen: 'hasPreview' },
       ],
+      recentProjects: [],
     }
   },
   computed: {
@@ -396,8 +404,31 @@ export default {
       }
     },
   },
+  async created() {
+    const saved = await loadPageConfig('copyright-config').catch(() => null)
+    if (saved) {
+      if (saved.softwareName) this.config.softwareName = saved.softwareName
+      if (saved.version) this.config.version = saved.version
+      if (saved.fontName) this.config.fontName = saved.fontName
+      if (saved.fontSize) this.config.fontSize = saved.fontSize
+      if (saved.linesPerPage) this.config.linesPerPage = saved.linesPerPage
+      if (saved.maxPages) this.config.maxPages = saved.maxPages
+      if (saved.cleanOptions) Object.assign(this.config.cleanOptions, saved.cleanOptions)
+    }
+    const gf = await getSetting('guide-finished-copyright', false).catch(() => false)
+    if (gf) this.guideFinished = true
+    // 加载最近目录
+    this.recentProjects = (await getRecentProjects('copyright').catch(() => [])).map(r => r.path)
+  },
   watch: {
     'guide.enabled'(val) { if (val) this.guideFinished = false },
+    guideFinished(val) { if (val) setSetting('guide-finished-copyright', true).catch(() => {}) },
+    'config.softwareName'() { this._saveConfig() },
+    'config.version'() { this._saveConfig() },
+    'config.fontName'() { this._saveConfig() },
+    'config.fontSize'() { this._saveConfig() },
+    'config.linesPerPage'() { this._saveConfig() },
+    'config.maxPages'() { this._saveConfig() },
   },
   activated() {
     this.isActive = true
@@ -406,6 +437,15 @@ export default {
     this.isActive = false
   },
   methods: {
+    _saveConfig() {
+      const { softwareName, version, fontName, fontSize, linesPerPage, maxPages, cleanOptions } = this.config
+      savePageConfig('copyright-config', { softwareName, version, fontName, fontSize, linesPerPage, maxPages, cleanOptions }).catch(() => {})
+    },
+    addRecentDir(path) {
+      if (this.config.directories.find(d => d.path === path)) return
+      this.config.directories.push({ path, ratio: 50 })
+      this.rebalance()
+    },
     closeFontDropdown() {
       this.fontDropdownOpen = false
     },
@@ -417,6 +457,7 @@ export default {
         this.showToast('该目录已添加', 'warning'); return
       }
       this.config.directories.push({ path: dir, ratio: 50 })
+      saveRecentProject(dir, 'copyright').catch(() => {})
       this.rebalance()
       this.showToast('目录已添加', 'success')
     },

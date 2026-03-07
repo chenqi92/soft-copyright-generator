@@ -22,7 +22,7 @@
 
             <div class="ai-cfg-list">
               <div
-                v-for="cfg in providerConfigs"
+                v-for="cfg in globalStore.providerConfigs"
                 :key="cfg.id"
                 :class="['ai-cfg-item', { active: editingId === cfg.id }]"
                 @click="selectProvider(cfg)"
@@ -39,7 +39,7 @@
               </div>
             </div>
 
-            <div v-if="providerConfigs.length === 0" class="ai-empty-hint">
+            <div v-if="globalStore.providerConfigs.length === 0" class="ai-empty-hint">
               暂无配置，点击上方按钮新增
             </div>
           </div>
@@ -291,15 +291,15 @@ import {
   deleteProviderConfig, testLlmConnection, getDefaultModels,
   getResolvedConfig, nextId, detectModels
 } from '../core/llm/llm-service.js'
+import { refreshProviderConfigs } from '../core/global-store.js'
 
 export default {
   name: 'AiSettings',
   components: { Bot, Settings, Check, Eye, EyeOff, Wifi, Save, Plus, Trash2, X, Layers, Search, Lightbulb, Edit3 },
-  inject: ['showToast'],
+  inject: ['showToast', 'globalStore'],
   data() {
     return {
       providerPresets: LLM_PROVIDERS,
-      providerConfigs: [],
       editingId: null,
       form: null,
       showKey: false,
@@ -333,9 +333,9 @@ export default {
   },
   methods: {
     async loadData() {
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length > 0) {
-        this.selectProvider(this.providerConfigs[0])
+      await refreshProviderConfigs()
+      if (this.globalStore.providerConfigs.length > 0) {
+        this.selectProvider(this.globalStore.providerConfigs[0])
       }
     },
 
@@ -497,7 +497,7 @@ export default {
         this.form.activeModelId = this.form.models[0].id
       }
       await upsertProviderConfig(this.form)
-      this.providerConfigs = await loadProviderConfigs()
+      await refreshProviderConfigs()
       this.editingId = this.form.id
       this.saved = true
       this.showToast('配置已保存', 'success')
@@ -506,10 +506,10 @@ export default {
 
     async removeProvider(cfg) {
       await deleteProviderConfig(cfg.id)
-      this.providerConfigs = await loadProviderConfigs()
+      await refreshProviderConfigs()
       if (this.editingId === cfg.id) {
-        if (this.providerConfigs.length > 0) {
-          this.selectProvider(this.providerConfigs[0])
+        if (this.globalStore.providerConfigs.length > 0) {
+          this.selectProvider(this.globalStore.providerConfigs[0])
         } else {
           this.form = null
           this.editingId = null

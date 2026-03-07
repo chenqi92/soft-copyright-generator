@@ -135,58 +135,61 @@ export default {
         return
       }
 
-      // 确保目标元素在视口内可见
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      // 确保目标元素在视口内可见（instant 避免异步滚动导致定位错位）
+      el.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' })
 
-      // 等待滚动完成后再计算位置
-      requestAnimationFrame(() => {
-        const rect = el.getBoundingClientRect()
-        const pad = 4
+      this._calcPosition(el)
+      // 延迟再校准一次，确保布局稳定后位置准确
+      clearTimeout(this._recalcTimer)
+      this._recalcTimer = setTimeout(() => this._calcPosition(el), 200)
+    },
+    _calcPosition(el) {
+      const rect = el.getBoundingClientRect()
+      const pad = 4
 
-        this.highlightStyle = {
+      this.highlightStyle = {
+        display: 'block',
+        top: `${rect.top - pad}px`,
+        left: `${rect.left - pad}px`,
+        width: `${rect.width + pad * 2}px`,
+        height: `${rect.height + pad * 2}px`,
+      }
+
+      // 决定 tooltip 位置
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceRight = window.innerWidth - rect.right
+
+      if (spaceBelow > 100) {
+        this.tooltipPlacement = 'guide-tooltip-bottom'
+        this.tooltipStyle = {
           display: 'block',
-          top: `${rect.top - pad}px`,
-          left: `${rect.left - pad}px`,
-          width: `${rect.width + pad * 2}px`,
-          height: `${rect.height + pad * 2}px`,
+          top: `${rect.bottom + pad + 8}px`,
+          left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
         }
-
-        // 决定 tooltip 位置
-        const spaceBelow = window.innerHeight - rect.bottom
-        const spaceRight = window.innerWidth - rect.right
-
-        if (spaceBelow > 100) {
-          this.tooltipPlacement = 'guide-tooltip-bottom'
-          this.tooltipStyle = {
-            display: 'block',
-            top: `${rect.bottom + pad + 8}px`,
-            left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
-          }
-        } else if (rect.top > 100) {
-          this.tooltipPlacement = 'guide-tooltip-top'
-          this.tooltipStyle = {
-            display: 'block',
-            top: `${rect.top - pad - 8}px`,
-            left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
-            transform: 'translateY(-100%)',
-          }
-        } else if (spaceRight > 280) {
-          this.tooltipPlacement = 'guide-tooltip-right'
-          this.tooltipStyle = {
-            display: 'block',
-            top: `${rect.top}px`,
-            left: `${rect.right + pad + 8}px`,
-          }
-        } else {
-          this.tooltipPlacement = 'guide-tooltip-left'
-          this.tooltipStyle = {
-            display: 'block',
-            top: `${rect.top}px`,
-            left: `${rect.left - pad - 8}px`,
-            transform: 'translateX(-100%)',
-          }
+      } else if (rect.top > 100) {
+        this.tooltipPlacement = 'guide-tooltip-top'
+        this.tooltipStyle = {
+          display: 'block',
+          top: `${rect.top - pad - 8}px`,
+          left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`,
+          transform: 'translateY(-100%)',
         }
-      })
+      } else if (spaceRight > 280) {
+        this.tooltipPlacement = 'guide-tooltip-right'
+        this.tooltipStyle = {
+          display: 'block',
+          top: `${rect.top}px`,
+          left: `${rect.right + pad + 8}px`,
+        }
+      } else {
+        this.tooltipPlacement = 'guide-tooltip-left'
+        this.tooltipStyle = {
+          display: 'block',
+          top: `${rect.top}px`,
+          left: `${rect.left - pad - 8}px`,
+          transform: 'translateX(-100%)',
+        }
+      }
     },
   },
 }

@@ -10,7 +10,7 @@
     <!-- 头部操作栏 -->
     <div class="view-header">
       <div class="header-actions">
-        <span v-if="loading" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:12px;">
+        <span v-if="loading && schema" style="display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:12px;">
           <span class="spinner"></span> {{ loadingText }}
         </span>
         <span v-else-if="schema" style="font-size:12px;color:var(--success-500);">
@@ -30,7 +30,7 @@
             <button class="btn btn-danger btn-sm" @click="aiController?.cancel()" title="取消">✕ 取消</button>
           </template>
           <select class="ai-model-select" v-model="selectedProviderId" :disabled="aiProcessing" @change="onProviderSelect">
-            <option v-for="p in providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
+            <option v-for="p in globalStore.providerConfigs" :key="p.id" :value="p.id">{{ p.label }}</option>
           </select>
           <select class="ai-model-select" v-model="selectedModelId" :disabled="aiProcessing">
             <option v-for="m in currentProviderModels" :key="m.id" :value="m.id">{{ m.label || m.id }}</option>
@@ -76,6 +76,14 @@
             <span v-else-if="connStatus === 'error'" class="conn-dot error" title="连接失败"></span>
           </div>
           <div class="card-body">
+            <!-- 历史连接 -->
+            <div v-if="savedConnections.length > 0" class="form-group">
+              <label class="form-label">历史连接</label>
+              <select class="form-input" @change="applySavedConnection($event.target.value); $event.target.value = ''">
+                <option value="">选择历史连接...</option>
+                <option v-for="c in savedConnections" :key="c.id" :value="c.id">{{ c.label }}</option>
+              </select>
+            </div>
             <!-- 数据库类型 -->
             <div class="form-group">
               <label class="form-label">数据库类型</label>
@@ -123,25 +131,34 @@
             <!-- 操作按钮 -->
             <div style="display:flex;gap:6px;margin-top:8px;">
               <button
+                v-if="!loading"
                 class="btn btn-secondary btn-sm"
                 style="flex:1;"
                 @click="testConnection"
-                :disabled="loading || !isConnConfigComplete"
+                :disabled="!isConnConfigComplete"
                 :title="!isConnConfigComplete ? '请先填写主机、端口和用户名' : '测试数据库连接'"
                 data-guide="db-test"
               >
                 <Wifi :size="14" /> 测试连接
               </button>
               <button
+                v-if="!loading"
                 class="btn btn-primary btn-sm"
                 style="flex:1;"
                 @click="fetchSchema"
-                :disabled="loading || !isConfigComplete"
+                :disabled="!isConfigComplete"
                 :title="!isConfigComplete ? '请先连接并选择一个数据库' : '获取数据库表结构'"
                 data-guide="db-fetch"
               >
                 <Download :size="14" /> 获取结构
               </button>
+              <div v-if="loading" style="flex:1;display:flex;align-items:center;gap:8px;">
+                <span class="spinner"></span>
+                <span style="font-size:12px;color:var(--text-secondary);flex:1;">{{ loadingText }}</span>
+                <button class="btn btn-danger btn-sm" @click="cancelConnection" style="flex-shrink:0;">
+                  ✕ 取消
+                </button>
+              </div>
             </div>
 
             <!-- 提示 -->
@@ -446,6 +463,7 @@ import {
   generateErMermaid, generateTableEntitySvg, renderDbMarkdown, renderDbDocx
 } from '../core/db-doc/db-doc-renderer.js'
 import { loadProviderConfigs, loadActiveSelection, fillDbDocPlaceholders, createAiController, getResolvedConfig } from '../core/llm/llm-service.js'
+import { saveDbConnection, getDbConnections, getSetting, setSetting } from '../core/db.js'
 import GuideTour from '../components/GuideTour.vue'
 import {
   Database, Check, FileDown, FileText, ChevronRight, Filter, Settings,
@@ -459,7 +477,7 @@ export default {
     Database, Check, FileDown, FileText, ChevronRight, Filter, Settings,
     Lightbulb, Wifi, Download, GitBranch, Key, Link, X, Bot
   },
-  inject: ['showToast', 'guide'],
+  inject: ['showToast', 'guide', 'globalStore'],
   data() {
     return {
       config: {
@@ -509,9 +527,9 @@ export default {
       aiProgressText: '',
       aiLogs: [],
       aiController: null,
-      providerConfigs: [],
       selectedProviderId: null,
       selectedModelId: null,
+      savedConnections: [],
       guideFinished: false,
       isActive: true,
       guideSteps: [
@@ -521,18 +539,14 @@ export default {
     }
   },
   async created() {
-    this.providerConfigs = await loadProviderConfigs()
-    if (this.providerConfigs.length > 0) {
-      const { providerId, modelId } = await loadActiveSelection()
-      const found = this.providerConfigs.find(p => p.id === providerId)
-      const target = found || this.providerConfigs[0]
-      this.selectedProviderId = target.id
-      this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-    }
+    this.syncSelectionFromStore()
+    this.loadSavedConnections()
+    const gf = await getSetting('guide-finished-db', false).catch(() => false)
+    if (gf) this.guideFinished = true
   },
   computed: {
     currentProviderModels() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       return p ? p.models : []
     },
     isConnConfigComplete() {
@@ -597,6 +611,7 @@ export default {
   },
   watch: {
     'guide.enabled'(val) { if (val) this.guideFinished = false },
+    guideFinished(val) { if (val) setSetting('guide-finished-db', true).catch(() => {}) },
     viewMode(val) {
       this.diagramScale = 1
       this.diagramX = 0
@@ -630,7 +645,7 @@ export default {
   },
   activated() {
     this.isActive = true
-    this.reloadConfigs()
+    this.syncSelectionFromStore()
   },
   deactivated() {
     this.isActive = false
@@ -650,9 +665,16 @@ export default {
     },
 
     // ===== 连接测试 =====
+    cancelConnection() {
+      this._cancelled = true
+      this.loading = false
+      this.loadingText = ''
+      this.showToast('已取消', 'info')
+    },
     async testConnection() {
+      this._cancelled = false
       this.loading = true
-      this.loadingText = '正在测试连接...'
+      this.loadingText = '正在连接...'
       this.connStatus = ''
       this.dbVersion = ''
       this.availableDatabases = []
@@ -662,18 +684,32 @@ export default {
           ...this.config,
           database: this.config.database || null,
         }
-        const result = await invoke('db_test_connection', { config: configToSend })
+        // 前端 10s 超时保底，防止 Rust 端超时未拦住
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('连接超时（10秒），请检查网络和连接参数')), 10000)
+        )
+        const result = await Promise.race([
+          invoke('db_test_connection', { config: configToSend }),
+          timeout,
+        ])
+        if (this._cancelled) return
         if (result.success) {
           this.connStatus = 'connected'
           this.dbVersion = result.version
+          this.availableDatabases = result.databases || []
           this.showToast(`连接成功: ${result.version}`, 'success')
-          // 自动获取数据库列表
-          await this.loadDatabases(configToSend)
+          // 保存连接到历史
+          saveDbConnection(this.config).then(() => this.loadSavedConnections()).catch(() => {})
+          // 如果只有一个库，自动选中
+          if (this.availableDatabases.length === 1 && !this.config.database) {
+            this.config.database = this.availableDatabases[0]
+          }
         } else {
           this.connStatus = 'error'
           this.showToast(`连接失败: ${result.error}`, 'error')
         }
       } catch (e) {
+        if (this._cancelled) return
         this.connStatus = 'error'
         this.showToast(`连接异常: ${String(e)}`, 'error')
       }
@@ -1198,7 +1234,7 @@ export default {
     },
 
     onProviderSelect() {
-      const p = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (p && p.models.length > 0) {
         this.selectedModelId = p.activeModelId || p.models[0].id
       }
@@ -1207,13 +1243,12 @@ export default {
     async startAiFill() {
       if (!this.schema || this.aiProcessing) return
 
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length === 0) {
+      if (this.globalStore.providerConfigs.length === 0) {
         this.showToast('请先在「AI 设置」标签页配置模型', 'warning')
         return
       }
 
-      const provider = this.providerConfigs.find(p => p.id === this.selectedProviderId)
+      const provider = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
       if (!provider) {
         this.showToast('请先选择 AI 厂商和模型', 'warning')
         return
@@ -1263,17 +1298,30 @@ export default {
       this.aiProgressText = ''
       this.aiController = null
     },
-    async reloadConfigs() {
-      this.providerConfigs = await loadProviderConfigs()
-      if (this.providerConfigs.length > 0) {
-        const found = this.providerConfigs.find(p => p.id === this.selectedProviderId)
-        if (!found) {
-          const { providerId, modelId } = await loadActiveSelection()
-          const target = this.providerConfigs.find(p => p.id === providerId) || this.providerConfigs[0]
-          this.selectedProviderId = target.id
-          this.selectedModelId = modelId || target.activeModelId || (target.models[0]?.id || '')
-        }
+    syncSelectionFromStore() {
+      if (this.globalStore.providerConfigs.length > 0 && !this.selectedProviderId) {
+        this.selectedProviderId = this.globalStore.activeProviderId || this.globalStore.providerConfigs[0].id
+        const p = this.globalStore.providerConfigs.find(p => p.id === this.selectedProviderId)
+        this.selectedModelId = this.globalStore.activeModelId || p?.activeModelId || (p?.models[0]?.id || '')
       }
+    },
+    async loadSavedConnections() {
+      try {
+        this.savedConnections = await getDbConnections()
+      } catch { /* ignore */ }
+    },
+    applySavedConnection(id) {
+      const conn = this.savedConnections.find(c => c.id === id)
+      if (!conn) return
+      this.config.db_type = conn.dbType || 'mysql'
+      this.config.host = conn.host
+      this.config.port = conn.port
+      this.config.username = conn.username
+      this.config.password = conn.password
+      this.config.database = conn.database || ''
+      this.connStatus = ''
+      this.availableDatabases = []
+      this.schema = null
     },
   },
 }

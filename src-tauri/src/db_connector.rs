@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{mysql::MySqlPoolOptions, postgres::PgPoolOptions, Row};
+use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
+use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DbConfig {
@@ -11,49 +13,36 @@ pub struct DbConfig {
     pub database: Option<String>,
 }
 
-fn url_encode(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
-            _ => {
-                for byte in c.to_string().as_bytes() {
-                    result.push_str(&format!("%{:02X}", byte));
-                }
-            }
-        }
-    }
-    result
-}
-
 impl DbConfig {
     fn db_name(&self) -> &str {
         self.database.as_deref().unwrap_or("")
     }
 
-    fn mysql_url(&self) -> String {
-        let user = url_encode(&self.username);
-        let pass = url_encode(&self.password);
+    /// 直接构建 ConnectOptions，避免 URL 解析导致密码特殊字符（@#% 等）出错
+    fn mysql_options(&self) -> MySqlConnectOptions {
+        let mut opts = MySqlConnectOptions::new()
+            .host(&self.host)
+            .port(self.port)
+            .username(&self.username)
+            .password(&self.password)
+            .ssl_mode(MySqlSslMode::Disabled); // 内网不需要 SSL，避免 TLS 握手卡死
         let db = self.db_name();
-        if db.is_empty() {
-            format!("mysql://{}:{}@{}:{}", user, pass, self.host, self.port)
-        } else {
-            format!(
-                "mysql://{}:{}@{}:{}/{}",
-                user, pass, self.host, self.port, db
-            )
+        if !db.is_empty() {
+            opts = opts.database(db);
         }
+        opts
     }
 
-    fn postgres_url(&self) -> String {
-        let user = url_encode(&self.username);
-        let pass = url_encode(&self.password);
+    fn postgres_options(&self) -> PgConnectOptions {
         let db = self.db_name();
         let target = if db.is_empty() { "postgres" } else { db };
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            user, pass, self.host, self.port, target
-        )
+        PgConnectOptions::new()
+            .host(&self.host)
+            .port(self.port)
+            .username(&self.username)
+            .password(&self.password)
+            .database(target)
+            .ssl_mode(PgSslMode::Disable) // 内网不需要 SSL
     }
 }
 
@@ -103,84 +92,151 @@ pub struct DbSchema {
     pub indexes: Vec<IndexInfo>,
 }
 
-/// Test database connection
-pub async fn test_connection(config: &DbConfig) -> Result<String, String> {
-    if config.db_type == "mysql" {
-        let pool = MySqlPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(std::time::Duration::from_secs(10))
-            .connect(&config.mysql_url())
-            .await
-            .map_err(|e| format!("MySQL 连接失败: {}", e))?;
-        let row: (String,) = sqlx::query_as("SELECT VERSION()")
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| format!("查询版本失败: {}", e))?;
-        pool.close().await;
-        Ok(format!("MySQL {}", row.0))
-    } else if config.db_type == "postgres" {
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(std::time::Duration::from_secs(10))
-            .connect(&config.postgres_url())
-            .await
-            .map_err(|e| format!("PostgreSQL 连接失败: {}", e))?;
-        let row: (String,) = sqlx::query_as("SELECT VERSION()")
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| format!("查询版本失败: {}", e))?;
-        pool.close().await;
-        Ok(row.0)
-    } else {
-        Err(format!("不支持的数据库类型: {}", config.db_type))
+/// Test database connection AND list databases in a single connection
+pub async fn test_and_list(config: &DbConfig) -> Result<(String, Vec<String>), String> {
+    use std::io::Write;
+    let mut log = std::fs::OpenOptions::new()
+        .create(true).append(true)
+        .open("/tmp/db_debug.log")
+        .ok();
+
+    macro_rules! dblog {
+        ($($arg:tt)*) => {
+            let msg = format!($($arg)*);
+            eprintln!("{}", msg);
+            if let Some(ref mut f) = log {
+                let _ = writeln!(f, "{}", msg);
+            }
+        }
     }
+
+    dblog!("[DB] 开始连接 {}:{} type={} user={} pass_len={}",
+        config.host, config.port, config.db_type, config.username, config.password.len());
+
+    let start = std::time::Instant::now();
+
+    tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        if config.db_type == "mysql" {
+            use sqlx::ConnectOptions;
+
+            dblog!("[DB] MySQL: 正在建立连接... (ssl=disabled)");
+            let conn_start = std::time::Instant::now();
+            let mut conn = config.mysql_options()
+                .connect()
+                .await
+                .map_err(|e| {
+                    let msg = format!("MySQL连接失败({}ms): {}", conn_start.elapsed().as_millis(), e);
+                    dblog!("[DB] {}", msg);
+                    msg
+                })?;
+
+            dblog!("[DB] 连接成功 ({}ms)，查询版本...", conn_start.elapsed().as_millis());
+            let row: (String,) = sqlx::query_as("SELECT VERSION()")
+                .fetch_one(&mut conn)
+                .await
+                .map_err(|e| format!("查询版本失败: {}", e))?;
+            let version = format!("MySQL {}", row.0);
+            dblog!("[DB] 版本={}", version);
+
+            dblog!("[DB] 查询数据库列表...");
+            let db_rows: Vec<(String,)> = sqlx::query_as(
+                "SELECT CAST(SCHEMA_NAME AS CHAR) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema','performance_schema','sys','mysql') ORDER BY SCHEMA_NAME"
+            )
+                .fetch_all(&mut conn)
+                .await
+                .map_err(|e| format!("查询数据库列表失败: {}", e))?;
+
+            let dbs: Vec<String> = db_rows.into_iter().map(|(name,)| name).collect();
+            dblog!("[DB] 成功! {} 个数据库, 总耗时 {}ms", dbs.len(), start.elapsed().as_millis());
+
+            drop(conn);
+            Ok((version, dbs))
+        } else if config.db_type == "postgres" {
+            use sqlx::ConnectOptions;
+
+            dblog!("[DB] PG: 正在建立连接...");
+            let mut conn = config.postgres_options()
+                .connect()
+                .await
+                .map_err(|e| format!("PG连接失败: {}", e))?;
+
+            let row: (String,) = sqlx::query_as("SELECT VERSION()")
+                .fetch_one(&mut conn)
+                .await
+                .map_err(|e| format!("查询版本失败: {}", e))?;
+
+            let db_rows = sqlx::query(
+                "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+            )
+            .fetch_all(&mut conn)
+            .await
+            .map_err(|e| format!("查询数据库列表失败: {}", e))?;
+
+            let dbs: Vec<String> = db_rows.iter().map(|r| r.get::<String, _>("datname")).collect();
+            dblog!("[DB] PG成功! {} 个数据库", dbs.len());
+
+            drop(conn);
+            Ok((row.0, dbs))
+        } else {
+            Err(format!("不支持的数据库类型: {}", config.db_type))
+        }
+    })
+    .await
+    .map_err(|_| {
+        let msg = format!("连接超时[v3]({}ms) {}:{}@{}", start.elapsed().as_millis(), config.username, config.db_type, config.host);
+        dblog!("[DB] {}", msg);
+        msg
+    })?
 }
 
 /// Fetch list of databases
 pub async fn fetch_databases(config: &DbConfig) -> Result<Vec<String>, String> {
-    match config.db_type.as_str() {
-        "mysql" => {
-            let pool = MySqlPoolOptions::new()
-                .max_connections(1)
-                .acquire_timeout(std::time::Duration::from_secs(10))
-                .connect(&config.mysql_url())
-                .await
-                .map_err(|e| format!("MySQL 连接失败: {}", e))?;
-            let rows = sqlx::query("SHOW DATABASES")
+    tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        match config.db_type.as_str() {
+            "mysql" => {
+                let pool = MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(std::time::Duration::from_secs(5))
+                    .connect_with(config.mysql_options())
+                    .await
+                    .map_err(|e| format!("MySQL 连接失败: {}", e))?;
+                let rows = sqlx::query("SHOW DATABASES")
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(|e| format!("查询数据库列表失败: {}", e))?;
+                pool.close().await;
+                let mut dbs: Vec<String> = rows.iter().map(|r| r.get::<String, _>(0)).collect();
+                dbs.retain(|d| {
+                    !matches!(
+                        d.as_str(),
+                        "information_schema" | "performance_schema" | "sys"
+                    )
+                });
+                dbs.sort();
+                Ok(dbs)
+            }
+            "postgres" => {
+                let pool = PgPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(std::time::Duration::from_secs(5))
+                    .connect_with(config.postgres_options())
+                    .await
+                    .map_err(|e| format!("PostgreSQL 连接失败: {}", e))?;
+                let rows = sqlx::query(
+                    "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+                )
                 .fetch_all(&pool)
                 .await
                 .map_err(|e| format!("查询数据库列表失败: {}", e))?;
-            pool.close().await;
-            let mut dbs: Vec<String> = rows.iter().map(|r| r.get::<String, _>(0)).collect();
-            // 过滤系统库
-            dbs.retain(|d| {
-                !matches!(
-                    d.as_str(),
-                    "information_schema" | "performance_schema" | "sys"
-                )
-            });
-            dbs.sort();
-            Ok(dbs)
+                pool.close().await;
+                let dbs: Vec<String> = rows.iter().map(|r| r.get::<String, _>("datname")).collect();
+                Ok(dbs)
+            }
+            _ => Err(format!("不支持的数据库类型: {}", config.db_type)),
         }
-        "postgres" => {
-            let pool = PgPoolOptions::new()
-                .max_connections(1)
-                .acquire_timeout(std::time::Duration::from_secs(10))
-                .connect(&config.postgres_url())
-                .await
-                .map_err(|e| format!("PostgreSQL 连接失败: {}", e))?;
-            let rows = sqlx::query(
-                "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
-            )
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| format!("查询数据库列表失败: {}", e))?;
-            pool.close().await;
-            let dbs: Vec<String> = rows.iter().map(|r| r.get::<String, _>("datname")).collect();
-            Ok(dbs)
-        }
-        _ => Err(format!("不支持的数据库类型: {}", config.db_type)),
-    }
+    })
+    .await
+    .map_err(|_| "连接超时（8秒），请检查连接参数".to_string())?
 }
 
 /// Fetch complete database schema
@@ -201,7 +257,7 @@ async fn fetch_mysql_schema(config: &DbConfig) -> Result<DbSchema, String> {
     let pool = MySqlPoolOptions::new()
         .max_connections(2)
         .acquire_timeout(std::time::Duration::from_secs(15))
-        .connect(&config.mysql_url())
+        .connect_with(config.mysql_options())
         .await
         .map_err(|e| format!("MySQL 连接失败: {}", e))?;
 
@@ -366,7 +422,7 @@ async fn fetch_postgres_schema(config: &DbConfig) -> Result<DbSchema, String> {
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .acquire_timeout(std::time::Duration::from_secs(15))
-        .connect(&config.postgres_url())
+        .connect_with(config.postgres_options())
         .await
         .map_err(|e| format!("PostgreSQL 连接失败: {}", e))?;
 

@@ -59,7 +59,7 @@ import DbDocGenerator from './views/DbDocGenerator.vue'
 import SrsGenerator from './views/SrsGenerator.vue'
 import SddGenerator from './views/SddGenerator.vue'
 import AiSettings from './views/AiSettings.vue'
-import { loadProviderConfigs } from './core/llm/llm-service.js'
+import { globalStore, initStore } from './core/global-store.js'
 
 export default {
   name: 'App',
@@ -68,11 +68,11 @@ export default {
     return {
       showToast: this.showToast,
       guide: this.guide,
+      globalStore,
     }
   },
   mounted() {
-    // 预加载 Tauri store，避免首次访问 AI 配置时的冷启动延迟
-    loadProviderConfigs().catch(() => {})
+    initStore().catch(e => console.warn('初始化全局状态失败:', e))
   },
   data() {
     return {
