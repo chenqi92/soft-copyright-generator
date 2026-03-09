@@ -352,6 +352,40 @@ export function getDefaultModels(providerId) {
 }
 
 /**
+ * 从模型 ID/名称推断能力标签
+ * 在 API 未提供 capabilities 字段时作为启发式补充
+ */
+function inferCapabilitiesFromId(modelId, caps = {}) {
+    const lower = (modelId || '').toLowerCase()
+
+    // ===== 深度思考 =====
+    if (/\b(r1|o[134]|qwq|thinking|reasoner|reason)\b/.test(lower)) {
+        caps.deepThinking = true
+    }
+
+    // ===== 代码生成 =====
+    if (/\b(code|coder|codestral|starcoder|codellama|deepcoder|devstral)\b/.test(lower)) {
+        caps.codeGen = true
+    }
+    // 通用强模型默认具备代码能力
+    if (/\b(gpt-[45]|claude|gemini-2|deepseek-(v3|chat)|qwen3?-\d+b)\b/.test(lower)) {
+        caps.codeGen = true
+    }
+
+    // ===== 多模态 =====
+    if (/\b(vision|vl|visual|mm|multimodal|image|pixtral|llava|minicpm-v)\b/.test(lower)) {
+        caps.multimodal = true
+    }
+
+    // ===== 函数调用 =====
+    if (/\b(gpt-[345]|claude|gemini|qwen[23]|mistral-large|command-r)\b/.test(lower) && !caps.deepThinking) {
+        caps.functionCall = true
+    }
+
+    return caps
+}
+
+/**
  * 自动检测本地 LLM 服务的可用模型列表
  * @param {Object} providerCfg - 包含 providerId, baseUrl, apiKey 的配置
  * @returns {Promise<{success: boolean, models: ModelDef[], message: string}>}
@@ -382,21 +416,56 @@ export async function detectModels(providerCfg) {
         let models = []
 
         if (isOllama && Array.isArray(data.models)) {
-            // Ollama 格式: { models: [{ name, size, ... }] }
-            models = data.models.map(m => ({
-                id: m.name || m.model,
-                label: (m.name || m.model).split(':')[0],
-                capabilities: {},
-                contextLength: 32768,
-            }))
+            // Ollama 格式: { models: [{ name, size, details: { families, ... }, ... }] }
+            models = data.models.map(m => {
+                const id = m.name || m.model
+                const details = m.details || {}
+                const families = Array.isArray(details.families) ? details.families : []
+                const caps = {}
+                // Ollama families 中包含 'clip' 或 'llava' 表示多模态
+                if (families.some(f => /clip|llava|vision|mllama/i.test(f))) {
+                    caps.multimodal = true
+                }
+                // 从模型名推断能力
+                inferCapabilitiesFromId(id, caps)
+                return {
+                    id,
+                    label: id.split(':')[0],
+                    capabilities: caps,
+                    contextLength: details.context_length || m.context_length || 32768,
+                }
+            })
         } else if (Array.isArray(data.data)) {
-            // OpenAI 兼容格式: { data: [{ id, ... }] }
-            models = data.data.map(m => ({
-                id: m.id,
-                label: m.id,
-                capabilities: {},
-                contextLength: 32768,
-            }))
+            // OpenAI 兼容格式: { data: [{ id, context_length?, architecture?, ... }] }
+            models = data.data.map(m => {
+                const caps = {}
+                const ctx = m.context_length || m.max_model_len || 32768
+
+                // OpenRouter / 部分平台返回 architecture.modality
+                const arch = m.architecture || {}
+                const modality = (arch.modality || '').toLowerCase()
+                const inputMods = Array.isArray(arch.input_modalities) ? arch.input_modalities : []
+
+                // 多模态检测
+                if (modality.includes('image') || inputMods.includes('image') || inputMods.includes('video')) {
+                    caps.multimodal = true
+                }
+
+                // 从模型 ID 推断更多能力
+                inferCapabilitiesFromId(m.id, caps)
+
+                // 长上下文标记
+                if (ctx >= 100000) {
+                    caps.longContext = true
+                }
+
+                return {
+                    id: m.id,
+                    label: m.id,
+                    capabilities: caps,
+                    contextLength: ctx,
+                }
+            })
         } else {
             return { success: false, models: [], message: '无法解析模型列表响应' }
         }
